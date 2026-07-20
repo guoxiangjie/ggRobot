@@ -1,0 +1,41 @@
+# ggRobot 参数配置
+
+# ── 机器人连接 ──
+robot:
+  pc2_host: "10.0.1.41"
+  pc3_host: "10.0.1.42"
+  pc3_media_path: "/var/tmp/x2_media"
+
+# ── 服务 ──
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+# ── 传感器 QoS ──
+
+# ── 激光避障 ──
+navigation:
+  source_name: "x2_navigation"
+  roi_x_min: 0.2
+  roi_x_max: 4.0
+  roi_y_min: -2.0
+  roi_y_max: 2.0
+  roi_z_min: 0.1
+  roi_z_max: 1.8
+  ground_tolerance: 0.08
+  use_ransac_ground: true
+  stop_distance: 0.4
+  avoid_distance: 0.8
+  slow_distance: 1.5
+  robot_radius: 0.25
+  safety_margin: 0.15
+  max_forward_speed: 0.4
+  slow_forward_speed: 0.15
+  max_angular_speed: 0.8
+  num_sectors: 9
+  sector_angle: 120.0
+
+# ── 速度控制 ──
+velocity:
+  source_name: "web_ui"
+  publish_rate: 50  # Hz
