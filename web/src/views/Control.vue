@@ -5,7 +5,7 @@ import TtsPanel from '@/components/TtsPanel.vue'
 import MotionPanel from '@/components/MotionPanel.vue'
 import VolumePanel from '@/components/VolumePanel.vue'
 import { wsClient } from '@/api/ws'
-import { switchMode, playTts } from '@/api/fastapi'
+import { switchMode, playTts, showLogo, hideLogo } from '@/api/fastapi'
 import { NButton, NPopconfirm, NSwitch, NSlider } from 'naive-ui'
 import IconArrowUpBold from '~icons/mdi/arrow-up-bold'
 import IconArrowDownBold from '~icons/mdi/arrow-down-bold'
@@ -52,6 +52,16 @@ async function setMode(id: string) {
   try { await switchMode(id) } catch { /* */ }
   activeMode.value = null
 }
+
+// ── 脸屏 Logo ──
+const logoShown = ref(false)
+async function toggleLogo(on: boolean) {
+  try {
+    await (on ? showLogo() : hideLogo())
+  } catch {
+    logoShown.value = !on  // 失败回退开关状态
+  }
+}
 </script>
 
 <template>
@@ -60,6 +70,10 @@ async function setMode(id: string) {
       <div>
         <h1 class="ctrl-title">控制</h1>
         <p class="ctrl-sub">语音播报 · 预设动作 · 移动遥控</p>
+      </div>
+      <div class="logo-ctrl">
+        <span class="logo-label">脸屏 Logo</span>
+        <NSwitch v-model:value="logoShown" @update:value="toggleLogo" size="small" />
       </div>
     </header>
 
@@ -151,7 +165,9 @@ async function setMode(id: string) {
 
 <style scoped>
 .control { padding: 32px 0; }
-.ctrl-head { margin-bottom: 20px; }
+.ctrl-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.logo-ctrl { display: flex; align-items: center; gap: 8px; }
+.logo-label { font-size: 13px; color: var(--text-secondary); }
 .ctrl-title { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.02em; }
 .ctrl-sub { margin: 0; font-size: 13px; color: var(--text-secondary); }
 

@@ -148,3 +148,7 @@ export async function takePhoto() {
   const { data } = await api.post('/api/photo')
   return data as { ok: boolean; path?: string }
 }
+
+// ── 脸屏 Logo ──
+export async function showLogo() { const { data } = await api.post('/api/logo/show'); return data as { ok: boolean; error?: string } }
+export async function hideLogo() { const { data } = await api.post('/api/logo/hide'); return data as { ok: boolean } }

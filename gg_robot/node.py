@@ -414,6 +414,8 @@ class X2Node(Node):
             "mode": self._do_mode,
             "emoji": self._do_emoji,
             "media_play": self._do_media_play,
+            "logo_show": self._do_logo_show,
+            "logo_hide": self._do_logo_hide,
             "get_volume": self._do_get_volume,
             "set_volume": self._do_set_volume,
             "get_mute": self._do_get_mute,
@@ -636,6 +638,26 @@ class X2Node(Node):
                 return req
             resp = call_with_retry(self, self.audio_client, build, "PlayAudioFile")
             return {"ok": resp is not None and resp.response.header.code == 0}
+
+    # ── Logo 脸屏显示 ──
+    def _do_logo_show(self, file_path: str) -> dict:
+        """循环播放 logo 视频到脸部屏（PlayVideo mode=2）"""
+        from .retry import call_with_retry
+
+        def build():
+            req = PlayVideo.Request()
+            req.header.header.stamp = self.get_clock().now().to_msg()
+            req.video_path = file_path
+            req.mode = 2  # 循环播放
+            req.priority = 5
+            return req
+        resp = call_with_retry(self, self.video_client, build, "PlayVideo(logo)")
+        ok = resp is not None and resp.success
+        return {"ok": ok}
+
+    def _do_logo_hide(self) -> dict:
+        """关闭 logo —— PlayVideo 无 stop 字段，切回待机表情覆盖"""
+        return self._do_emoji(10, 1)  # EMOTION_IDLE_CALM_1
 
     # ── 状态查询 ──
     def _get_status(self) -> dict:
