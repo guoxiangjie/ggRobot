@@ -27,6 +27,8 @@ from aimdk_msgs.srv import (
 from aimdk_msgs.msg import McLocomotionVelocity, PmuState, MessageHeader, PlayStateChange
 from sensor_msgs.msg import JointState, Imu, CompressedImage
 
+logger = logging.getLogger(__name__)
+
 # 全局引用，由 __main__.py 初始化
 _node: "X2Node | None" = None
 
