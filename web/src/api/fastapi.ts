@@ -85,6 +85,7 @@ export async function uploadMedia(file: File, onProgress?: (pct: number) => void
   const form = new FormData()
   form.append('file', file)
   const { data } = await api.post('/api/media/upload', form, {
+    timeout: 0,  // 大文件上传不超时（上传 + scp PC3 可能较久）
     onUploadProgress: (e) => {
       if (e.total && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
     },
