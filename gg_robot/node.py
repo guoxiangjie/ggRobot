@@ -641,7 +641,7 @@ class X2Node(Node):
                 req.file.priority = 6
                 req.file.priority_weight = 0
                 return req
-            resp = call_with_retry(self, self.audio_client, build, "PlayAudioFile")
+            resp = call_with_retry(self, self.audio_client, build, "PlayAudioFile", timeout=2.0)
             ok = resp is not None and resp.reponse.status.value == 1
             return {"ok": ok}
 

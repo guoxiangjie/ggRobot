@@ -16,14 +16,16 @@ def call_with_retry(
     client,
     build_request: Callable,
     service_name: str = "",
+    timeout: float = TIMEOUT_SEC,
+    retries: int = MAX_RETRIES,
 ) -> T | None:
-    """跨板 Service 调用的标准重试模板"""
-    for i in range(MAX_RETRIES):
+    """跨板 Service 调用的标准重试模板（timeout/retries 可调）"""
+    for i in range(retries):
         req = build_request()
         future = client.call_async(req)
-        rclpy.spin_until_future_complete(node, future, timeout_sec=TIMEOUT_SEC)
+        rclpy.spin_until_future_complete(node, future, timeout_sec=timeout)
         if future.done():
             return future.result()
         logger.info(f"{service_name} 重试 [{i}]")
-    logger.error(f"{service_name} 全部 {MAX_RETRIES} 次重试失败")
+    logger.error(f"{service_name} 全部 {retries} 次重试失败")
     return None
