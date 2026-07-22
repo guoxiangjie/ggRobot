@@ -4,7 +4,7 @@
 robot:
   pc2_host: "10.0.1.41"
   pc3_host: "10.0.1.42"
-  pc3_media_path: "/var/tmp/x2_media"
+  pc3_media_path: "/agibot/data/home/agi/media"
 
 # ── 服务 ──
 server:
