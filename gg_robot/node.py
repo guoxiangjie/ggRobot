@@ -639,7 +639,7 @@ class X2Node(Node):
                 req.file.info = info; req.file.priority = 6
                 return req
             resp = call_with_retry(self, self.audio_client, build, "PlayAudioFile")
-            return {"ok": resp is not None and resp.response.header.code == 0}
+            return {"ok": resp is not None and resp.reponse.header.code == 0}
 
     # ── Logo 脸屏显示 ──
     def _do_logo_show(self, file_path: str) -> dict:
