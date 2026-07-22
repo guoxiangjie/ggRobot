@@ -615,7 +615,7 @@ class X2Node(Node):
     # ── 音视频播放 ──
     def _do_media_play(self, file_path: str, file_name: str) -> dict:
         from .retry import call_with_retry
-        from aimdk_msgs.msg import AudioFile, AudioInfo
+        from aimdk_msgs.msg import AudioFile
 
         ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
         is_video = ext in ("mp4", "avi", "mov", "mkv")
@@ -630,16 +630,20 @@ class X2Node(Node):
             resp = call_with_retry(self, self.video_client, build, "PlayVideo")
             return {"ok": resp is not None and resp.success}
         else:
+            import os
             def build():
                 req = PlayAudioFile.Request()
                 req.request.header.stamp = self.get_clock().now().to_msg()
                 req.file = AudioFile()
-                req.file.pkg_name = "web_ui"; req.file.file_name = file_name; req.file.file_path = file_path
-                info = AudioInfo(); info.channels = 1; info.sample_rate = 16000
-                req.file.info = info; req.file.priority = 6
+                req.file.pkg_name = "web_ui"
+                req.file.file_name = file_name                          # 仅文件名
+                req.file.file_path = os.path.dirname(file_path) + '/'   # 目录(带斜杠)
+                req.file.priority = 6
+                req.file.priority_weight = 0
                 return req
             resp = call_with_retry(self, self.audio_client, build, "PlayAudioFile")
-            return {"ok": resp is not None and resp.reponse.header.code == 0}
+            ok = resp is not None and resp.reponse.status.value == 1
+            return {"ok": ok}
 
     # ── Logo 脸屏显示 ──
     def _do_logo_show(self, file_path: str) -> dict:
