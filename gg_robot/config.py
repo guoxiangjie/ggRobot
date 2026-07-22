@@ -80,7 +80,8 @@ def _get(key: str, default=None):
 # 机器人连接
 PC2_HOST = _get("robot.pc2_host", "10.0.1.41")
 PC3_HOST = _get("robot.pc3_host", "10.0.1.42")
-PC3_MEDIA_PATH = _get("robot.pc3_media_path", "/var/tmp/x2_media")
+PC3_MEDIA_PATH = _get("robot.pc3_media_path", "/agibot/data/home/agi/media")  # face_ui 在 PC3 读这里
+PC3_PASSWORD = os.environ.get("GGROBOT_PC3_PASSWORD", "")  # 配了则用 sshpass 自动 scp 到 PC3
 
 # 速度控制
 VEL_SOURCE_NAME = _get("velocity.source_name", "web_ui")

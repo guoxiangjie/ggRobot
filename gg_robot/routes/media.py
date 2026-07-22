@@ -1,7 +1,7 @@
 """音视频资源管理 — 上传 / 列表 / 删除 / 播放
 
 文件流程:
-  上传 → PC2 暂存 → scp 到 PC3 → 播放时用 PC3 路径
+  上传 → PC2 暂存 → scp 到 PC3(/agibot/data/home/agi/media) → 播放时用 PC3 路径
 """
 
 import logging
@@ -12,34 +12,43 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 
+from ..config import PC3_HOST, PC3_MEDIA_PATH, PC3_PASSWORD
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 PC2_MEDIA = Path.home() / "ggRobot/media"
 PC2_MEDIA.mkdir(parents=True, exist_ok=True)
 
-from ..config import PC3_HOST, PC3_MEDIA_PATH
-
 PC3_USER = "agi"
 PC3_MEDIA = PC3_MEDIA_PATH
-SSH_KEY = str(Path.home() / ".ssh/id_rsa")
+
+
+def _pc3_prefix() -> list:
+    """配了密码用 sshpass，否则普通 ssh/scp（依赖免密）"""
+    return ["sshpass", "-p", PC3_PASSWORD] if PC3_PASSWORD else []
 
 
 def _scp_to_pc3(local_path: Path) -> bool:
-    """将文件拷贝到 PC3"""
+    """将文件拷贝到 PC3，检查返回码（不再假阳性）"""
+    pre = _pc3_prefix()
     try:
         subprocess.run(
-            ["ssh", "-i", SSH_KEY, f"{PC3_USER}@{PC3_HOST}",
-             f"mkdir -p {PC3_MEDIA} && chmod 755 {PC3_MEDIA}"],
+            pre + ["ssh", "-o", "StrictHostKeyChecking=no", f"{PC3_USER}@{PC3_HOST}",
+                   f"mkdir -p {PC3_MEDIA} && chmod 755 {PC3_MEDIA}"],
             capture_output=True, timeout=5,
         )
-        subprocess.run(
-            ["scp", "-i", SSH_KEY, str(local_path), f"{PC3_USER}@{PC3_HOST}:{PC3_MEDIA}/"],
+        r = subprocess.run(
+            pre + ["scp", "-o", "StrictHostKeyChecking=no", str(local_path),
+                   f"{PC3_USER}@{PC3_HOST}:{PC3_MEDIA}/"],
             capture_output=True, timeout=15,
         )
+        if r.returncode != 0:
+            logger.warning(f"⚠️ SCP 失败: {r.stderr.decode(errors='replace').strip()}")
+            return False
         subprocess.run(
-            ["ssh", "-i", SSH_KEY, f"{PC3_USER}@{PC3_HOST}",
-             f"chmod 644 {PC3_MEDIA}/{local_path.name}"],
+            pre + ["ssh", "-o", "StrictHostKeyChecking=no", f"{PC3_USER}@{PC3_HOST}",
+                   f"chmod 644 {PC3_MEDIA}/{local_path.name}"],
             capture_output=True, timeout=5,
         )
         logger.info(f"📦 已同步到 PC3: {local_path.name}")
@@ -51,12 +60,12 @@ def _scp_to_pc3(local_path: Path) -> bool:
 
 def _delete_from_pc3(filename: str) -> bool:
     try:
-        subprocess.run(
-            ["ssh", "-i", SSH_KEY, f"{PC3_USER}@{PC3_HOST}",
-             f"rm -f {PC3_MEDIA}/{filename}"],
+        r = subprocess.run(
+            _pc3_prefix() + ["ssh", "-o", "StrictHostKeyChecking=no", f"{PC3_USER}@{PC3_HOST}",
+                             f"rm -f {PC3_MEDIA}/{filename}"],
             capture_output=True, timeout=5,
         )
-        return True
+        return r.returncode == 0
     except Exception:
         return False
 
