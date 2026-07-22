@@ -81,10 +81,14 @@ export async function getMediaList() {
   return data as { files: MediaFile[] }
 }
 
-export async function uploadMedia(file: File) {
+export async function uploadMedia(file: File, onProgress?: (pct: number) => void) {
   const form = new FormData()
   form.append('file', file)
-  const { data } = await api.post('/api/media/upload', form)
+  const { data } = await api.post('/api/media/upload', form, {
+    onUploadProgress: (e) => {
+      if (e.total && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
+    },
+  })
   return data as { ok: boolean; name?: string; size?: number; pc3_synced?: boolean; error?: string }
 }
 

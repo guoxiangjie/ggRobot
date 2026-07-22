@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
 import { getMediaList, uploadMedia, deleteMedia, playMedia, type MediaFile } from '@/api/fastapi'
-import { NButton, NUpload, NDataTable, NPopconfirm, NSpace, NTag } from 'naive-ui'
+import { NButton, NUpload, NDataTable, NPopconfirm, NSpace, NTag, NProgress } from 'naive-ui'
 import IconUpload from '~icons/mdi/upload'
 import IconPlay from '~icons/mdi/play'
 import IconDelete from '~icons/mdi/delete'
@@ -10,6 +10,8 @@ import IconRefresh from '~icons/mdi/refresh'
 const files = ref<MediaFile[]>([])
 const loading = ref(false)
 const playing = ref<string | null>(null)
+const uploading = ref(false)
+const uploadProgress = ref(0)
 
 async function refresh() {
   loading.value = true
@@ -19,8 +21,13 @@ async function refresh() {
 
 async function onUpload({ file }: { file: any }) {
   if (!file.file) return
-  await uploadMedia(file.file)
-  await refresh()
+  uploading.value = true
+  uploadProgress.value = 0
+  try {
+    await uploadMedia(file.file, (pct) => { uploadProgress.value = pct })
+    await refresh()
+  } catch { /* */ }
+  uploading.value = false
 }
 
 async function onPlay(name: string) {
@@ -86,6 +93,13 @@ onMounted(refresh)
       </NSpace>
     </header>
 
+    <div v-if="uploading" class="upload-status">
+      <NProgress :percentage="uploadProgress" :height="6" :show-indicator="false" />
+      <span class="upload-label">
+        {{ uploadProgress < 100 ? `上传中 ${uploadProgress}%` : '同步到 PC3…' }}
+      </span>
+    </div>
+
     <NDataTable
       :columns="columns"
       :data="files"
@@ -101,4 +115,6 @@ onMounted(refresh)
 .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
 .head h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.02em; }
 .head p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.upload-status { margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+.upload-label { font-size: 12px; color: var(--text-secondary); white-space: nowrap; min-width: 92px; }
 </style>
