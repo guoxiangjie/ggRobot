@@ -130,7 +130,7 @@ make all      # web + deploy一键
 3. **速度必须持续50Hz发送** — 单条指令无效，松开需发全零
 4. **TTS/Service跨板调用不稳定** — 统一8次重试/0.25s超时
 5. **QoS不匹配是传感器无数据的第一大原因** — v0.9.0细化：RGBD用RELIABLE、双目/后视/Lidar用TRANSIENT_LOCAL、camera_info须RELIABLE+TRANSIENT_LOCAL；控制指令用RELIABLE
-6. **音视频文件必须先SCP到PC3** — PC3路径为 `/var/tmp/x2_media/`
+6. **音视频文件必须传到 PC3 的 `/agibot/data/home/agi/media/`** — face_ui 服务在 PC3 读 agi home 此目录，`/var/tmp` 它读不到（报文件不存在）；PC2→PC3 免密要配 PC2 的 `~/.ssh/config`（系统默认 webssh key 无效），见记忆 face-ui-pc3-media
 7. **time.sleep 卡死rclpy spin** — 用 spin_once 循环替代
 8. **Mac Python版本** — 用 Homebrew python@3.12，不要用 3.14（llvmlite不兼容）
 9. **SDK 版本说明** — 文档站 latest 指向 v0.9.0（部分页面已到 v1.0.0）。项目多处接口已过时待迁移：McAction 数字ID→action_desc字符串、area位掩码→1/2/3/11、相机 rgb_head_front_center v0.8.1已下线→改 rgbd_head_front、TTS 的 play_state 话题 v0.9.0文档不存在→用 estimated_duration、关节状态是 JointStateArray 非 sensor_msgs。**完整变更与迁移指南见 `docs/aimdk_v0.9.0_migration.md`，速查见记忆 aimdk-v090-sdk-notes**
