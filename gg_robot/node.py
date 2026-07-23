@@ -309,14 +309,17 @@ class X2Node(Node):
 
     # ── 相机管理 ──
     def list_cameras(self) -> list[dict]:
-        """返回所有相机 topic 及其状态"""
+        """返回所有相机 topic 及其状态（实时检测 topic 是否已被 DDS 发现）"""
+        topic_names = {t for t, _ in self.get_topic_names_and_types()}
         result = []
         for cam_id, cfg in self._camera_topics.items():
+            active = cfg["topic"] in topic_names
+            cfg["active"] = active  # 同步更新
             result.append({
                 "id": cam_id,
                 "label": cfg["label"],
                 "topic": cfg["topic"],
-                "active": cfg["active"],
+                "active": active,
                 "selected": cam_id == self._active_camera,
             })
         return result
@@ -327,8 +330,11 @@ class X2Node(Node):
             return {"ok": False, "error": f"未知相机: {camera_id}"}
 
         cfg = self._camera_topics[camera_id]
-        if not cfg["active"]:
-            return {"ok": False, "error": f"相机 {cfg['label']} 无数据"}
+        # 实时检测 topic 是否存在（启动时 DDS 可能还没发现跨板 topic）
+        topic_names = {t for t, _ in self.get_topic_names_and_types()}
+        if cfg["topic"] not in topic_names:
+            return {"ok": False, "error": f"相机 {cfg['label']} topic 未发现"}
+        cfg["active"] = True
 
         # 销毁旧订阅
         if self._cam_sub is not None:
