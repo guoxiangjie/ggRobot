@@ -1,0 +1,19 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/mc/action/McActionCommand.msg
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/McAction.idl"
+
+module aimdk_msgs {
+  module msg {
+    @verbatim (language="comment", text=
+      "Action")
+    struct McActionCommand {
+      aimdk_msgs::msg::McAction action;
+
+      @verbatim (language="comment", text=
+        "描述")
+      string action_desc;
+    };
+  };
+};

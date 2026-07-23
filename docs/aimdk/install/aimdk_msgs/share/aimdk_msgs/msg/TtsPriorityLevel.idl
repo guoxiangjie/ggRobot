@@ -1,0 +1,34 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/interaction/msg/TtsPriorityLevel.msg
+// generated code does not contain a copyright notice
+
+
+module aimdk_msgs {
+  module msg {
+    module TtsPriorityLevel_Constants {
+      const uint8 UNKNOWN = 0;
+      @verbatim (language="comment", text=
+        "后台服务层")
+      const uint8 BACKGROUND_L1 = 1;
+      @verbatim (language="comment", text=
+        "主动服务层")
+      const uint8 SERVICE_L2 = 2;
+      @verbatim (language="comment", text=
+        "任务执行层")
+      const uint8 MISSION_L4 = 4;
+      @verbatim (language="comment", text=
+        "交互相应层")
+      const uint8 INTERACTION_L6 = 6;
+      @verbatim (language="comment", text=
+        "系统提示层" "\n"        "危险预警层")
+      const uint8 SYSTEM_L7 = 7;
+      const uint8 WARNING_L8 = 8;
+      @verbatim (language="comment", text=
+        "生命安全层")
+      const uint8 SAFETY_L10 = 10;
+    };
+    struct TtsPriorityLevel {
+      uint8 value;
+    };
+  };
+};

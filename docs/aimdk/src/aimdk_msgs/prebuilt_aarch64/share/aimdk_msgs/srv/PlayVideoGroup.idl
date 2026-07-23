@@ -1,0 +1,45 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/face_ui/srv/PlayVideoGroup.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonRequest.idl"
+#include "aimdk_msgs/msg/CommonResponse.idl"
+
+module aimdk_msgs {
+  module srv {
+    module PlayVideoGroup_Request_Constants {
+      @verbatim (language="comment", text=
+        "仅播放一次")
+      const uint8 EMOTION_MODE_ONCE = 1;
+      @verbatim (language="comment", text=
+        "循环播放")
+      const uint8 EMOTION_MODE_LOOP = 2;
+    };
+    struct PlayVideoGroup_Request {
+      aimdk_msgs::msg::CommonRequest header;
+
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "视频路径列表" "\n"
+        "----------------------------------------------------")
+      sequence<string> video_path_list;
+
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "播放模式枚举")
+      uint8 mode;
+
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "播放优先级")
+      int32 priority;
+    };
+    struct PlayVideoGroup_Response {
+      aimdk_msgs::msg::CommonResponse header;
+
+      boolean success;
+
+      string message;
+    };
+  };
+};

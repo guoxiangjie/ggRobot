@@ -1,0 +1,31 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/mc/motion/msg/McInputAction.msg
+// generated code does not contain a copyright notice
+
+
+module aimdk_msgs {
+  module msg {
+    module McInputAction_Constants {
+      @verbatim (language="comment", text=
+        "添加新的输入源")
+      const int32 INPUTACTION_ADD = 1001;
+      @verbatim (language="comment", text=
+        "修改输入源配置")
+      const int32 INPUTACTION_MODIFY = 1002;
+      @verbatim (language="comment", text=
+        "删除输入源")
+      const int32 INPUTACTION_DELETE = 1003;
+      @verbatim (language="comment", text=
+        "使能输入源")
+      const int32 INPUTACTION_ENABLE = 2001;
+      @verbatim (language="comment", text=
+        "下使能输入源")
+      const int32 INPUTACTION_DISABLE = 2002;
+    };
+    @verbatim (language="comment", text=
+      "输入源操作")
+    struct McInputAction {
+      int32 value;
+    };
+  };
+};

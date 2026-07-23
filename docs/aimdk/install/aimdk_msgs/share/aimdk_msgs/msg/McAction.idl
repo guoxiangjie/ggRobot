@@ -1,0 +1,70 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/mc/action/McAction.msg
+// generated code does not contain a copyright notice
+
+
+module aimdk_msgs {
+  module msg {
+    module McAction_Constants {
+      @verbatim (language="comment", text=
+        "被动模式")
+      const int32 PASSIVE_DEFAULT = 1;
+      @verbatim (language="comment", text=
+        "软急停")
+      const int32 SOFT_EMERGENCY_STOP = 2;
+      @verbatim (language="comment", text=
+        "阻尼模式")
+      const int32 DAMPING_DEFAULT = 3;
+      @verbatim (language="comment", text=
+        "零力矩模式")
+      const int32 ZERO_TORQUE_DEFAULT = 4;
+      @verbatim (language="comment", text=
+        "位控站立模式")
+      const int32 JOINT_DEFAULT = 100;
+      @verbatim (language="comment", text=
+        "位控关节锁定模式")
+      const int32 JOINT_FREEZE = 101;
+      @verbatim (language="comment", text=
+        "力控站立模式")
+      const int32 STAND_DEFAULT = 200;
+      @verbatim (language="comment", text=
+        "站立+身体运动模式")
+      const int32 STAND_BODY_CONTROL = 201;
+      @verbatim (language="comment", text=
+        "行走模式")
+      const int32 LOCOMOTION_DEFAULT = 300;
+      @verbatim (language="comment", text=
+        "跑步模式")
+      const int32 RUN_DEFAULT = 301;
+      @verbatim (language="comment", text=
+        "越野模式")
+      const int32 LOCOMOTION_STEP = 302;
+      @verbatim (language="comment", text=
+        "VR遥操模式")
+      const int32 VR_REMOTE_CONTROLLER = 400;
+      @verbatim (language="comment", text=
+        "技能类" "\n"        "坐下")
+      const int32 SIT_DOWN_DEFAULT = 2000;
+      @verbatim (language="comment", text=
+        "蹲下")
+      const int32 CROUCH_DOWN_DEFAULT = 2002;
+      @verbatim (language="comment", text=
+        "躺倒")
+      const int32 LIE_DOWN_DEFAULT = 2004;
+      @verbatim (language="comment", text=
+        "平躺站起")
+      const int32 STAND_UP_DEFAULT = 2005;
+      @verbatim (language="comment", text=
+        "上楼梯")
+      const int32 ASCEND_STAIRS = 2006;
+      @verbatim (language="comment", text=
+        "下楼梯")
+      const int32 DESCEND_STAIRS = 2008;
+    };
+    @verbatim (language="comment", text=
+      "定义枚举字段")
+    struct McAction {
+      int32 value;
+    };
+  };
+};

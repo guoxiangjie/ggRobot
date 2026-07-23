@@ -1,0 +1,28 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/mc/action/srv/SetMcAction.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonResponse.idl"
+#include "aimdk_msgs/msg/McActionCommand.idl"
+#include "aimdk_msgs/msg/RequestHeader.idl"
+
+module aimdk_msgs {
+  module srv {
+    @verbatim (language="comment", text=
+      "请求头")
+    struct SetMcAction_Request {
+      aimdk_msgs::msg::RequestHeader header;
+
+      @verbatim (language="comment", text=
+        "输入源")
+      string source;
+
+      @verbatim (language="comment", text=
+        "Action命令")
+      aimdk_msgs::msg::McActionCommand command;
+    };
+    struct SetMcAction_Response {
+      aimdk_msgs::msg::CommonResponse response;
+    };
+  };
+};

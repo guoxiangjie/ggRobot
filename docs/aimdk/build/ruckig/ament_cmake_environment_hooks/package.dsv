@@ -1,0 +1,4 @@
+source;share/ruckig/local_setup.bash
+source;share/ruckig/local_setup.dsv
+source;share/ruckig/local_setup.sh
+source;share/ruckig/local_setup.zsh

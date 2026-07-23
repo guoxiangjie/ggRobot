@@ -1,0 +1,15 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/common/msg/RequestHeader.msg
+// generated code does not contain a copyright notice
+
+#include "builtin_interfaces/msg/Time.idl"
+
+module aimdk_msgs {
+  module msg {
+    @verbatim (language="comment", text=
+      "World time stamp, which is expressed as seconds and nanoseconds.")
+    struct RequestHeader {
+      builtin_interfaces::msg::Time stamp;
+    };
+  };
+};

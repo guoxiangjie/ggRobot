@@ -1,0 +1,204 @@
+aimrt:
+  main_thread:
+  configurator:
+    temp_cfg_path: ./cfg/tmp # 生成的临时模块配置文件存放路径
+  plugin:
+    plugins:
+      - name: sm_plugin
+        path: libaimrt_sm_plugin.so
+      - name: net_plugin
+        path: libaimrt_net_plugin.so
+        options:
+          thread_num: 4
+          http_options:
+            listen_ip: 0.0.0.0
+            listen_port: 51822
+          # udp_options:
+          #   listen_ip: 0.0.0.0
+          #   listen_port: 50031
+          #   max_pkg_size: 20480
+          # tcp_options:
+          #   listen_ip: 0.0.0.0
+          #   listen_port: 50322
+      # - name: lcm_plugin
+      #   path: libaimrt_lcm_plugin.so
+
+      - name: ros2_plugin
+        path: libaimrt_ros2_plugin.so
+        options:
+          node_name: aimrt_sim_node
+          executor_type: MultiThreaded # SingleThreaded/StaticSingleThreaded/MultiThreaded
+          executor_thread_num: 4
+  log: # log配置
+    core_lvl: Info # 内核日志等级，可选项：Trace/Debug/Info/Warn/Error/Fatal/Off，不区分大小写
+    default_module_lvl: Info # 模块默认日志等级
+    backends: # 日志backends
+      - type: console # 控制台日志
+        options:
+          color: true # 是否彩色打印
+      - type: rotate_file # 文件日志
+        options:
+          path: ./log # 日志文件路径
+          filename: aimrt_mujoco_sim.log # 日志文件名称
+          max_file_size_m: 4 # 日志文件最大尺寸，单位m
+          max_file_num: 10 # 最大日志文件数量，0代表无限
+  executor: # 执行器配置
+    executors: # 当前先支持thread型，未来可根据加载的网络模块提供更多类型
+      - name: sim_work_thread # 线程池
+        type: asio_thread # 类型为线程型
+      - name: gui_work_thread # 线程池
+        type: asio_thread # 类型为线程型
+
+      - name: arm_joint_state_publisher_thread
+        type: asio_thread # 类型为线程型
+      - name: leg_joint_state_publisher_thread
+        type: asio_thread # 类型为线程型
+      - name: data_state_publisher_thread
+        type: asio_thread # 类型为线程型
+      - name: common_joint_state_publisher_thread
+        type: asio_thread # 类型为线程型
+      # - name: head_joint_state_publisher_thread
+      #   type: asio_thread # 类型为线程型
+      - name: joint_command_subscriber_thread
+        type: asio_thread # 类型为线程型
+        options:
+          thread_num: 5
+      - name: sim_sm_thread # 线程池
+        type: asio_thread # 类型为线程型
+        options:
+          thread_num: 1
+
+  channel: # 消息队列相关配置
+    pub_topics_options:
+      - topic_name: /aima/hal/imu/torso/state
+        enable_backends: [ros2]
+      - topic_name: /aima/hal/joint/arm/state
+        enable_backends: [ros2]
+      - topic_name: /aima/hal/joint/leg/state
+        enable_backends: [ros2]
+      - topic_name: /aima/hal/joint/waist/state
+        enable_backends: [ros2]
+      - topic_name: /aima/hal/imu/chest/state
+        enable_backends: [ros2]
+      - topic_name: /aima/hal/joint/head/state
+        enable_backends: [ros2]
+      - topic_name: /aima/hal/odom/state
+        enable_backends: [ros2]
+
+    sub_topics_options:
+      - topic_name: /aima/hal/joint/arm/command
+        enable_backends: [ros2]
+      - topic_name: /aima/hal/joint/leg/command
+        enable_backends: [ros2]
+      - topic_name: /aima/hal/joint/waist/command
+        enable_backends: [ros2]
+      - topic_name: /aima/hal/joint/head/command
+        enable_backends: [ros2]
+      - topic_name: /aima/sim/option/command
+        enable_backends: [ros2]
+
+    backends: # 消息队列后端配置
+      - type: sm
+        options:
+          sub_default_executor: sim_sm_thread # 默认执行器
+          sub_topic_options:
+            - topic_name: "(.*)"
+      - type: ros2
+        options:
+          pub_topics_options:
+            - topic_name: "(.*)"
+              qos:
+                reliability: best_effort
+          sub_topics_options:
+            - topic_name: "(.*)"
+              qos:
+                reliability: best_effort
+
+  module: # 模块配置
+    modules: # 模块
+      - name: MujocoSimModule # 模块Name接口返回的名称
+        log_lvl: Info # 模块日志级别
+
+MujocoSimModule:
+  gui_executor: gui_work_thread
+  sim_executor: sim_work_thread
+  simulation_model: ${SIM_ROBOT_PATH}/model_info/scene.xml
+  robot_model: ${SIM_ROBOT_PATH}/model_info/default.yaml
+
+  SubscriberManager:
+    subscriber_cfg_list:
+      - name: arm_joint_command
+        topic: /aima/hal/joint/arm/command
+        enable: true
+        executor: joint_command_subscriber_thread
+        wait_ready: false
+        print_interval: 1000
+      - name: leg_joint_command
+        topic: /aima/hal/joint/leg/command
+        enable: true
+        executor: joint_command_subscriber_thread
+        wait_ready: false
+        print_interval: 1000
+      - name: waist_joint_command
+        topic: /aima/hal/joint/waist/command
+        enable: true
+        executor: joint_command_subscriber_thread
+        wait_ready: false
+        print_interval: 1000
+      - name: head_joint_command
+        topic: /aima/hal/joint/head/command
+        enable: true
+        executor: joint_command_subscriber_thread
+        wait_ready: false
+        print_interval: 1000
+      - name: option_command
+        topic: /aima/sim/option/command
+        enable: true
+        executor: joint_command_subscriber_thread
+        wait_ready: false
+        print_interval: 1000
+
+  PublisherManager:
+    publisher_cfg_list:
+      - name: imu_state_ros
+        topic: /aima/hal/imu/torso/state
+        enable: true
+        executor: data_state_publisher_thread
+        frequency: 500
+        print_interval: 0
+      - name: imu_chest_state_ros
+        topic: /aima/hal/imu/chest/state
+        enable: true
+        executor: data_state_publisher_thread
+        frequency: 500
+        print_interval: 0
+      - name: arm_joint_state
+        topic: /aima/hal/joint/arm/state
+        enable: true
+        executor: arm_joint_state_publisher_thread
+        frequency: 1000
+        print_interval: 0
+      - name: leg_joint_state
+        topic: /aima/hal/joint/leg/state
+        enable: true
+        executor: leg_joint_state_publisher_thread
+        frequency: 1000
+        print_interval: 0
+      - name: waist_joint_state
+        topic: /aima/hal/joint/waist/state
+        enable: true
+        executor: common_joint_state_publisher_thread
+        frequency: 1000
+        print_interval: 0
+      - name: head_joint_state
+        topic: /aima/hal/joint/head/state
+        enable: true
+        executor: common_joint_state_publisher_thread
+        frequency: 1000
+        print_interval: 0
+      - name: odom_state_ros
+        topic: /aima/hal/odom/state
+        enable: true
+        executor: data_state_publisher_thread
+        frequency: 500
+        print_interval: 0

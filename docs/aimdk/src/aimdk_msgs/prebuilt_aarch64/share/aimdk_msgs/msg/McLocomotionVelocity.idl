@@ -1,0 +1,34 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/mc/motion/msg/McLocomotionVelocity.msg
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/MessageHeader.idl"
+
+module aimdk_msgs {
+  module msg {
+    @verbatim (language="comment", text=
+      "消息头")
+    struct McLocomotionVelocity {
+      aimdk_msgs::msg::MessageHeader header;
+
+      @verbatim (language="comment", text=
+        "输入源")
+      string source;
+
+      @verbatim (language="comment", text=
+        "前进速度 (m/s)" "\n"
+        "方向: +为前进, -为后退")
+      double forward_velocity;
+
+      @verbatim (language="comment", text=
+        "侧移速度 (m/s)" "\n"
+        "方向: +为左移, -为右移")
+      double lateral_velocity;
+
+      @verbatim (language="comment", text=
+        "旋转速度 (角速度) (m/s)" "\n"
+        "方向: +为左旋转, -为右旋转")
+      double angular_velocity;
+    };
+  };
+};

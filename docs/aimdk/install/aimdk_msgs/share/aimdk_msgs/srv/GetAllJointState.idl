@@ -1,0 +1,26 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/hal/srv/GetAllJointState.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonRequest.idl"
+#include "aimdk_msgs/msg/CommonResponse.idl"
+#include "aimdk_msgs/msg/JointState.idl"
+
+module aimdk_msgs {
+  module srv {
+    struct GetAllJointState_Request {
+      aimdk_msgs::msg::CommonRequest request;
+    };
+    struct GetAllJointState_Response {
+      aimdk_msgs::msg::CommonResponse reponse;
+
+      sequence<aimdk_msgs::msg::JointState> head_joints;
+
+      sequence<aimdk_msgs::msg::JointState> arm_joints;
+
+      sequence<aimdk_msgs::msg::JointState> waist_joints;
+
+      sequence<aimdk_msgs::msg::JointState> leg_joints;
+    };
+  };
+};

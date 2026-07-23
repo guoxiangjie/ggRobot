@@ -1,0 +1,35 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/app_proxy/srv/GetRobotResources.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonRequest.idl"
+#include "aimdk_msgs/msg/CommonResponse.idl"
+#include "aimdk_msgs/msg/RobotResource.idl"
+
+module aimdk_msgs {
+  module srv {
+    @verbatim (language="comment", text=
+      "--------------------------------------------------------------------------------------------------------------" "\n"
+      "获取机器人上资源的服务" "\n"
+      "--------------------------------------------------------------------------------------------------------------")
+    struct GetRobotResources_Request {
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "请求头")
+      aimdk_msgs::msg::CommonRequest header;
+    };
+    @verbatim (language="comment", text=
+      "---------------------------------------------------- resp")
+    struct GetRobotResources_Response {
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "响应头")
+      aimdk_msgs::msg::CommonResponse header;
+
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "机上资源信息")
+      sequence<aimdk_msgs::msg::RobotResource> robot_resources;
+    };
+  };
+};

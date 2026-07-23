@@ -1,0 +1,70 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/hal/srv/SetPmuLed.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonRequest.idl"
+#include "aimdk_msgs/msg/ResponseHeader.idl"
+
+module aimdk_msgs {
+  module srv {
+    module SetPmuLed_Request_Constants {
+      @verbatim (language="comment", text=
+        "led_strip_mode: 灯带模式枚举" "\n"        "常亮")
+      const uint8 LED_STRIP_MODE_CONSTANT = 0;
+      @verbatim (language="comment", text=
+        "呼吸，4s周期，亮度正弦变化")
+      const uint8 LED_STRIP_MODE_BREATH = 1;
+      @verbatim (language="comment", text=
+        "闪烁，1s周期，0.5s亮，0.5s灭")
+      const uint8 LED_STRIP_MODE_FLASH = 2;
+      @verbatim (language="comment", text=
+        "流水，2s周期，从左到右依次点亮，然后灭")
+      const uint8 LED_STRIP_MODE_FLOW = 3;
+      @verbatim (language="comment", text=
+        "无效")
+      const uint8 LED_STRIP_MODE_MAX = 4;
+    };
+    @verbatim (language="comment", text=
+      "Request")
+    struct SetPmuLed_Request {
+      aimdk_msgs::msg::CommonRequest request;
+
+      @verbatim (language="comment", text=
+        "来源追踪")
+      string trace_id;
+
+      @verbatim (language="comment", text=
+        "灯带模式")
+      uint8 led_strip_mode;
+
+      @verbatim (language="comment", text=
+        "红色分量")
+      uint8 r;
+
+      @verbatim (language="comment", text=
+        "绿色分量")
+      uint8 g;
+
+      @verbatim (language="comment", text=
+        "蓝色分量")
+      uint8 b;
+
+      @verbatim (language="comment", text=
+        "优先级")
+      int32 priority;
+
+      @verbatim (language="comment", text=
+        "优先级重置标志")
+      boolean reset_priority;
+    };
+    struct SetPmuLed_Response {
+      @verbatim (language="comment", text=
+        "响应头")
+      aimdk_msgs::msg::ResponseHeader header;
+
+      @verbatim (language="comment", text=
+        "设置是否成功")
+      uint16 status_code;
+    };
+  };
+};

@@ -1,0 +1,22 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/hal/msg/HandState.msg
+// generated code does not contain a copyright notice
+
+
+module aimdk_msgs {
+  module msg {
+    struct HandState {
+      string name;
+
+      double position;
+
+      double velocity;
+
+      double effort;
+
+      int32 state;
+
+      int32 faultcode;
+    };
+  };
+};

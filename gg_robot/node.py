@@ -392,14 +392,32 @@ class X2Node(Node):
                     break
 
         if not self._active_camera:
-            logger.warning("📷 未检测到任何相机 topic，相机功能不可用")
+            logger.info("📷 启动时未发现相机 topic，将在后台重试订阅")
         else:
             cfg = self._camera_topics[self._active_camera]
             logger.info(f"📷 自动选择相机: {cfg['label']}")
 
+    def _try_select_camera_once(self) -> bool:
+        """单次尝试选相机（非阻塞）：DDS 发现 topic 就订阅第一个可用相机"""
+        if self._active_camera:
+            return True
+        topic_names = {t for t, _ in self.get_topic_names_and_types()}
+        for cam_id, cfg in self._camera_topics.items():
+            if cfg["topic"] in topic_names:
+                self.switch_camera(cam_id)
+                logger.info(f"📷 后台自动订阅相机: {cfg['label']}")
+                return True
+        return False
+
     # ── 命令处理 ──
     def process_commands(self):
         """处理命令队列中的待执行命令（由 rclpy 线程调用）"""
+        # 相机兜底：启动时若没选到（DDS discovery 延迟），定期重试订阅
+        if not self._active_camera:
+            self._cam_try_tick = getattr(self, '_cam_try_tick', 0) + 1
+            if self._cam_try_tick >= 50:  # ~0.5s (50×10ms)
+                self._cam_try_tick = 0
+                self._try_select_camera_once()
         while True:
             cmd = _cmd_queue.get_nowait()
             if cmd is None:

@@ -1,0 +1,145 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/face_ui/srv/PlayEmoji.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonRequest.idl"
+#include "aimdk_msgs/msg/CommonResponse.idl"
+
+module aimdk_msgs {
+  module srv {
+    module PlayEmoji_Request_Constants {
+      @verbatim (language="comment", text=
+        "表情枚举" "\n"        "未知")
+      const uint8 EMOTION_UNKNOWN = 0;
+      @verbatim (language="comment", text=
+        "眨眼")
+      const uint8 EMOTION_IDLE_BLINK = 1;
+      @verbatim (language="comment", text=
+        "平静-眼睛变化")
+      const uint8 EMOTION_IDLE_CALM_1 = 10;
+      @verbatim (language="comment", text=
+        "平静-眼睛变化")
+      const uint8 EMOTION_IDLE_CALM_2 = 11;
+      @verbatim (language="comment", text=
+        "平静-游戏")
+      const uint8 EMOTION_IDLE_GAME = 20;
+      @verbatim (language="comment", text=
+        "平静-卖萌")
+      const uint8 EMOTION_IDLE_CUTE_1 = 30;
+      @verbatim (language="comment", text=
+        "平静-卖萌")
+      const uint8 EMOTION_IDLE_CUTE_2 = 31;
+      @verbatim (language="comment", text=
+        "平静-卖萌")
+      const uint8 EMOTION_IDLE_CUTE_3 = 32;
+      @verbatim (language="comment", text=
+        "平静-卖萌")
+      const uint8 EMOTION_IDLE_CUTE_4 = 33;
+      @verbatim (language="comment", text=
+        "闭上眼")
+      const uint8 EMOTION_EYE_CLOSE = 40;
+      @verbatim (language="comment", text=
+        "睁开眼")
+      const uint8 EMOTION_EYE_OPEN = 50;
+      @verbatim (language="comment", text=
+        "无聊")
+      const uint8 EMOTION_EYE_BORING_1 = 60;
+      @verbatim (language="comment", text=
+        "异常")
+      const uint8 EMOTION_EYE_ABNORMAL = 70;
+      @verbatim (language="comment", text=
+        "睡着")
+      const uint8 EMOTION_EYE_SLEEPY = 80;
+      @verbatim (language="comment", text=
+        "快乐")
+      const uint8 EMOTION_EYE_HAPPY = 90;
+      @verbatim (language="comment", text=
+        "加倍开心")
+      const uint8 EMOTION_EYE_EXTREMEHAPPY_1 = 100;
+      @verbatim (language="comment", text=
+        "狂喜")
+      const uint8 EMOTION_EYE_EXTREMEHAPPY_2 = 101;
+      @verbatim (language="comment", text=
+        "悲伤")
+      const uint8 EMOTION_EYE_SAD = 110;
+      @verbatim (language="comment", text=
+        "同情")
+      const uint8 EMOTION_EYE_SYMPATHY = 120;
+      @verbatim (language="comment", text=
+        "疑惑")
+      const uint8 EMOTION_EYE_CONFUSE = 130;
+      @verbatim (language="comment", text=
+        "震惊")
+      const uint8 EMOTION_EYE_SHOCK = 140;
+      @verbatim (language="comment", text=
+        "撒娇")
+      const uint8 EMOTION_EYE_ACTCUTE = 150;
+      @verbatim (language="comment", text=
+        "严肃")
+      const uint8 EMOTION_EYE_SERIOUS = 160;
+      @verbatim (language="comment", text=
+        "思考")
+      const uint8 EMOTION_EYE_THINKING = 170;
+      @verbatim (language="comment", text=
+        "愤怒")
+      const uint8 EMOTION_EYE_ANGRY = 180;
+      @verbatim (language="comment", text=
+        "加倍愤怒")
+      const uint8 EMOTION_EYE_EXTREMEANGRY = 190;
+      @verbatim (language="comment", text=
+        "崇拜")
+      const uint8 EMOTION_EYE_ADORE = 200;
+      @verbatim (language="comment", text=
+        "加倍崇拜")
+      const uint8 EMOTION_EYE_EXTREMEADORE = 210;
+      @verbatim (language="comment", text=
+        "充电")
+      const uint8 EMOTION_EYE_CHARGE = 220;
+      @verbatim (language="comment", text=
+        "仅播放一次")
+      const uint8 EMOTION_MODE_ONCE = 1;
+      @verbatim (language="comment", text=
+        "循环播放")
+      const uint8 EMOTION_MODE_LOOP = 2;
+    };
+    struct PlayEmoji_Request {
+      @verbatim (language="comment", text=
+        "--------------------------------------------------------------------------------------------------------------" "\n"
+        "输入表情参数单独控制灯光播放" "\n"
+        "--------------------------------------------------------------------------------------------------------------" "\n"
+        "----------------------------------------------------" "\n"
+        "请求头")
+      aimdk_msgs::msg::CommonRequest header;
+
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        " 表情 id")
+      uint8 emotion_id;
+
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "播放模式枚举")
+      uint8 mode;
+
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "播放优先级")
+      int32 priority;
+    };
+    @verbatim (language="comment", text=
+      "---------------------------------------------------")
+    struct PlayEmoji_Response {
+      @verbatim (language="comment", text=
+        "---------------------------------------------------- resp" "\n"
+        "响应头")
+      aimdk_msgs::msg::CommonResponse header;
+
+      @verbatim (language="comment", text=
+        "-----------------------------------------------------" "\n"
+        " 是否控制成功")
+      boolean success;
+
+      string message;
+    };
+  };
+};

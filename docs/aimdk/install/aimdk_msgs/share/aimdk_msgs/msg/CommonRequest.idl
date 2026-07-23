@@ -1,0 +1,15 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/common/msg/CommonRequest.msg
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/RequestHeader.idl"
+
+module aimdk_msgs {
+  module msg {
+    @verbatim (language="comment", text=
+      "请求头")
+    struct CommonRequest {
+      aimdk_msgs::msg::RequestHeader header;
+    };
+  };
+};

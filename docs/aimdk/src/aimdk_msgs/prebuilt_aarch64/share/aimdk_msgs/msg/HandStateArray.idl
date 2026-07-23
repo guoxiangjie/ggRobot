@@ -1,0 +1,28 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/hal/msg/HandStateArray.msg
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/HandState.idl"
+#include "aimdk_msgs/msg/HandTouchSensorData.idl"
+#include "aimdk_msgs/msg/HandType.idl"
+#include "aimdk_msgs/msg/MessageHeader.idl"
+
+module aimdk_msgs {
+  module msg {
+    struct HandStateArray {
+      aimdk_msgs::msg::MessageHeader header;
+
+      aimdk_msgs::msg::HandType left_hand_type;
+
+      sequence<aimdk_msgs::msg::HandState> left_hands;
+
+      aimdk_msgs::msg::HandTouchSensorData left_touch_sensors;
+
+      aimdk_msgs::msg::HandType right_hand_type;
+
+      sequence<aimdk_msgs::msg::HandState> right_hands;
+
+      aimdk_msgs::msg::HandTouchSensorData right_touch_sensors;
+    };
+  };
+};

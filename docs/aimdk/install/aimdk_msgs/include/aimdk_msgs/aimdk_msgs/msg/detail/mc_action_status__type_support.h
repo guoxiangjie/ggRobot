@@ -1,0 +1,33 @@
+// generated from rosidl_generator_c/resource/idl__type_support.h.em
+// with input from aimdk_msgs:msg/McActionStatus.idl
+// generated code does not contain a copyright notice
+
+#ifndef AIMDK_MSGS__MSG__DETAIL__MC_ACTION_STATUS__TYPE_SUPPORT_H_
+#define AIMDK_MSGS__MSG__DETAIL__MC_ACTION_STATUS__TYPE_SUPPORT_H_
+
+#include "rosidl_typesupport_interface/macros.h"
+
+#include "aimdk_msgs/msg/rosidl_generator_c__visibility_control.h"
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+#include "rosidl_runtime_c/message_type_support_struct.h"
+
+// Forward declare the get type support functions for this type.
+ROSIDL_GENERATOR_C_PUBLIC_aimdk_msgs
+const rosidl_message_type_support_t *
+ROSIDL_TYPESUPPORT_INTERFACE__MESSAGE_SYMBOL_NAME(
+  rosidl_typesupport_c,
+  aimdk_msgs,
+  msg,
+  McActionStatus
+)();
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // AIMDK_MSGS__MSG__DETAIL__MC_ACTION_STATUS__TYPE_SUPPORT_H_
