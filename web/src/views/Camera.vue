@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { wsClient } from '@/api/ws'
+import { getCameras, switchCamera } from '@/api/fastapi'
+import { NSelect } from 'naive-ui'
 import IconWebcam from '~icons/mdi/webcam'
+
+interface Cam { id: string; label: string; active: boolean; selected: boolean }
 
 const imageSrc = ref('')
 const hasFrame = ref(false)
+const cameras = ref<Cam[]>([])
+const activeCamera = ref<string | null>(null)
+const selectOpts = computed(() => cameras.value.filter(c => c.active).map(c => ({ label: c.label, value: c.id })))
+const activeLabel = computed(() => cameras.value.find(c => c.id === activeCamera.value)?.label ?? '相机')
 
 function onFrame(buf: ArrayBuffer) {
   // 格式: 4字节时间戳(ms) + JPEG 数据
@@ -16,8 +24,25 @@ function onFrame(buf: ArrayBuffer) {
   hasFrame.value = true
 }
 
+async function loadCameras() {
+  try {
+    const res = await getCameras()
+    cameras.value = res.cameras
+    const sel = res.cameras.find(c => c.selected) || res.cameras.find(c => c.active)
+    activeCamera.value = sel?.id ?? null
+  } catch { /* */ }
+}
+
+async function onChange(id: string) {
+  activeCamera.value = id
+  hasFrame.value = false
+  if (imageSrc.value) { URL.revokeObjectURL(imageSrc.value); imageSrc.value = '' }
+  try { await switchCamera(id) } catch { /* */ }
+}
+
 onMounted(() => {
   wsClient.onCamera(onFrame)
+  loadCameras()
 })
 
 onUnmounted(() => {
@@ -31,8 +56,17 @@ onUnmounted(() => {
     <header class="cam-head">
       <div>
         <h1 class="cam-title">相机</h1>
-        <p class="cam-sub">RGBD 前视 · 自动推送</p>
+        <p class="cam-sub">{{ activeLabel }} · 自动推送</p>
       </div>
+      <NSelect
+        v-if="selectOpts.length"
+        :value="activeCamera"
+        :options="selectOpts"
+        size="small"
+        style="width: 168px;"
+        placeholder="选择相机"
+        @update:value="onChange"
+      />
     </header>
 
     <div class="cam-frame">
