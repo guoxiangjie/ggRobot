@@ -347,7 +347,7 @@ class X2Node(Node):
             CompressedImage,
             cfg["topic"],
             self._on_camera,
-            self._cam_qos_map.get(cfg.get("qos", "reliable"), self._cam_qos_map["reliable"]),
+            qos_profile_sensor_data,  # 用内置 sensor QoS（和 IMU 同路径，确保 DDS 注册；能匹配 RELIABLE publisher）
         )
         self._active_camera = camera_id
         logger.info(f"📷 切换相机: {cfg['label']} ({cfg['topic']})")
