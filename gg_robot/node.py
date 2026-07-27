@@ -309,17 +309,15 @@ class X2Node(Node):
 
     # ── 相机管理 ──
     def list_cameras(self) -> list[dict]:
-        """返回所有相机 topic 及其状态（实时检测 topic 是否已被 DDS 发现）"""
-        topic_names = {t for t, _ in self.get_topic_names_and_types()}
+        """返回所有相机（均视为可用，DDS discovery 可能延迟，由订阅时实际匹配决定）"""
         result = []
         for cam_id, cfg in self._camera_topics.items():
-            active = cfg["topic"] in topic_names
-            cfg["active"] = active  # 同步更新
+            cfg["active"] = True
             result.append({
                 "id": cam_id,
                 "label": cfg["label"],
                 "topic": cfg["topic"],
-                "active": active,
+                "active": True,
                 "selected": cam_id == self._active_camera,
             })
         return result
@@ -330,11 +328,9 @@ class X2Node(Node):
             return {"ok": False, "error": f"未知相机: {camera_id}"}
 
         cfg = self._camera_topics[camera_id]
-        # 实时检测 topic 是否存在（启动时 DDS 可能还没发现跨板 topic）
-        topic_names = {t for t, _ in self.get_topic_names_and_types()}
-        if cfg["topic"] not in topic_names:
-            return {"ok": False, "error": f"相机 {cfg['label']} topic 未发现"}
         cfg["active"] = True
+        # 不预检 topic 是否已被 DDS 发现：create_subscription 直接订阅，
+        # DDS 会自动匹配 publisher（跨板 discovery 延迟也能后续收到）
 
         # 销毁旧订阅
         if self._cam_sub is not None:
@@ -362,38 +358,12 @@ class X2Node(Node):
         return self._active_camera
 
     def _auto_select_camera(self):
-        """扫描所有相机 topic，自动选择第一个有数据的"""
-        # 先快速检测哪些 topic 有发布者
-        from rclpy import spin_once as _spin_once
-        import time as _time
-        deadline = _time.time() + 3.0
-        checked: set[str] = set()
-        while _time.time() < deadline:
-            for cam_id, cfg in self._camera_topics.items():
-                if cam_id in checked:
-                    continue
-                # 尝试通过 topic name 匹配来判断是否有发布者
-                topic_names = self.get_topic_names_and_types()
-                for tname, _ in topic_names:
-                    if tname == cfg["topic"]:
-                        cfg["active"] = True
-                        checked.add(cam_id)
-                        if not self._active_camera:
-                            self.switch_camera(cam_id)
-                        break
-            if self._active_camera:
-                break
-            _spin_once(self, timeout_sec=0.1)
-        else:
-            # 3秒后还没找到，选第一个 active 的
-            for cam_id, cfg in self._camera_topics.items():
-                if cfg["active"] and not self._active_camera:
-                    self.switch_camera(cam_id)
-                    break
-
-        if not self._active_camera:
-            logger.info("📷 启动时未发现相机 topic，将在后台重试订阅")
-        else:
+        """直接订阅第一个相机（推荐 RGBD 前视）。
+        create_subscription 不依赖 topic 已被 DDS 发现，订阅创建后 publisher 出现即匹配。"""
+        for cam_id in self._camera_topics:
+            self.switch_camera(cam_id)
+            break
+        if self._active_camera:
             cfg = self._camera_topics[self._active_camera]
             logger.info(f"📷 自动选择相机: {cfg['label']}")
 

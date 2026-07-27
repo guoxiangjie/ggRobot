@@ -9,6 +9,7 @@ echo "📦 部署到 ${ORIN_HOST}:${ORIN_DIR}..."
 
 rsync -avz \
   --exclude '.git' \
+  --exclude 'docs' \
   --exclude '__pycache__' \
   --exclude '*.pyc' \
   --exclude 'web/node_modules' \
