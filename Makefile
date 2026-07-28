@@ -1,62 +1,65 @@
 # ggRobot — X2 机器人 Web 控制台
-# 用法:
-#   ORIN_HOST=agi@192.168.x.x make deploy    # 先设 IP 再部署
-#   ORIN_HOST=agi@192.168.x.x make start     # 先设 IP 再启动
-#   ORIN_HOST=agi@192.168.x.x make all       # 构建+部署
 #
-# 默认值 (网线直连):
-#   ORIN_HOST=agi@10.0.1.41
+# 部署前请先在机器人上手动停服：pkill -f 'python -m gg_robot'
+#
+# 用法:
+#   make build     # 构建前端
+#   make deploy    # 增量化部署（不删旧目录）
+#   make ship      # 构建前端 + 清旧目录 + 全新部署
 
 ORIN_HOST := $(shell grep -v '^\#' ip.txt 2>/dev/null | head -1)
 ORIN_DIR  ?= ~/ggRobot
 
-RSYNC = rsync -avz --exclude '.git' --exclude '__pycache__' --exclude '*.pyc' --exclude 'web/node_modules'
+RSYNC_FLAGS = -avz \
+	--exclude '.git' \
+	--exclude '.claude' \
+	--exclude '.idea' \
+	--exclude '.DS_Store' \
+	--exclude '.gitignore' \
+	--exclude '__pycache__' \
+	--exclude '*.pyc' \
+	--exclude 'web' \
+	--exclude 'docs' \
+	--exclude 'scripts' \
+	--exclude 'CLAUDE.md' \
+	--exclude 'Makefile' \
+	--exclude 'README.md' \
+	--exclude 'ip.txt' \
+	--exclude 'logo.svg'
 
-.PHONY: web deploy install start stop ip all
+.PHONY: build deploy clean ship start
 
 # ── 前端构建 ──
-web:
+build:
 	@echo "🔨 构建前端..."
 	cd web && pnpm build
 	@rm -rf static && mkdir -p static
 	@cp -r web/dist/* static/
 	@echo "✅ 前端已构建到 static/"
 
-# ── 部署 ──
+# ── 增量部署（不删旧目录）──
 deploy:
 	@echo "📦 部署到 $(ORIN_HOST):$(ORIN_DIR)..."
-	$(RSYNC) ./ $(ORIN_HOST):$(ORIN_DIR)
+	rsync $(RSYNC_FLAGS) ./ $(ORIN_HOST):$(ORIN_DIR)
 	@echo "✅ 部署完成"
 
-# ── 安装依赖 ──
-install:
-	@echo "📦 安装 Orin 依赖..."
-	ssh $(ORIN_HOST) "pip install fastapi uvicorn websockets python-multipart"
-	@echo "✅ 依赖安装完成"
+# ── 删远端旧目录 ──
+clean:
+	@echo "🗑 删除 $(ORIN_HOST):$(ORIN_DIR)..."
+	ssh $(ORIN_HOST) "rm -rf $(ORIN_DIR)"
+	@echo "✅ 已清除"
 
-# ── 启动 ──
+# ── 一键交付：构建 + 清旧 + 全量部署 ──
+ship: build clean deploy
+	@echo ""
+	@echo "✅ 构建+全量部署完成"
+	@echo "   启动: make start"
+
+# ── SSH 启动服务 ──
 start:
 	@echo "🚀 启动 ggRobot..."
 	ssh -t $(ORIN_HOST) "\
 		source /opt/ros/humble/setup.bash && \
 		source ~/aimdk/install/local_setup.bash && \
 		cd $(ORIN_DIR) && \
-		IP=\$$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' $(ORIN_DIR)/ip.txt | head -1) && \
-		echo '' && \
-		echo '================================' && \
-		echo '  访问: http://'\$$IP':8000' && \
-		echo '================================' && \
-		echo '' && \
 		python -m gg_robot"
-
-# ── 停止 ──
-stop:
-	@echo "⏹ 停止 ggRobot..."
-	ssh $(ORIN_HOST) "pkill -f 'python -m gg_robot' || true"
-	@echo "✅ 已停止"
-
-# ── 全部 ──
-all: web deploy
-	@echo ""
-	@echo "✅ 构建+部署完成"
-	@echo "   运行: ORIN_HOST=$(ORIN_HOST) make start"

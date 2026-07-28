@@ -6,7 +6,7 @@ import ImuCard from '@/components/ImuCard.vue'
 import JointCard from '@/components/JointCard.vue'
 
 const robot = useRobotStore()
-const { battery, joints, imu } = storeToRefs(robot)
+const { battery, joints, imu, sensorCount, lastSensorTs } = storeToRefs(robot)
 </script>
 
 <template>
@@ -14,7 +14,7 @@ const { battery, joints, imu } = storeToRefs(robot)
     <header class="dash-head">
       <div>
         <h1 class="dash-title">仪表盘</h1>
-        <p class="dash-sub">实时监控 X2 运行状态</p>
+        <p class="dash-sub">实时监控 X2 运行状态 · #{{ sensorCount }} @ {{ lastSensorTs || '等待中...' }}</p>
       </div>
     </header>
 

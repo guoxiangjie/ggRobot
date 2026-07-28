@@ -30,12 +30,25 @@ def ros_spin():
     executor = rclpy.executors.MultiThreadedExecutor()
     executor.add_node(node)
 
+    # 命令处理独立线程 —— 耗时命令（_do_action_sequence / _do_run_task / wait_tts_done）
+    # 不再阻塞 executor 的回调调度。否则这些命令在 rclpy 线程里同步执行时，
+    # executor.spin_once() 长时间不被调用，传感器回调被饿死，battery/imu 停在旧值。
+    def cmd_loop():
+        while rclpy.ok():
+            try:
+                node.process_commands()
+            except Exception:
+                logger.exception("命令处理异常")
+            time.sleep(0.005)
+
+    threading.Thread(target=cmd_loop, daemon=True, name="cmd").start()
+
     logger.info("📬 命令队列就绪，开始处理...")
 
     try:
-        while rclpy.ok():
-            executor.spin_once(timeout_sec=0.01)
-            node.process_commands()
+        # 阻塞式持续分派传感器 / service 响应 / 定时器回调，
+        # 与命令处理线程解耦，传感器数据实时刷新不再受命令耗时影响。
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:

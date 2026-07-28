@@ -8,6 +8,8 @@ export const useRobotStore = defineStore('robot', () => {
   const battery = ref({ percentage: 0, voltage: 0, current: 0, temperature: 0, power: 0 })
   const joints = ref<Record<string, { position: number; velocity: number }>>({})
   const imu = ref({ accel_x: 0, accel_y: 0, accel_z: 0 })
+  const sensorCount = ref(0)        // 诊断：收到 sensor 消息次数
+  const lastSensorTs = ref('')      // 诊断：末次 sensor 消息时间
 
   function handleSensor(payload: any) {
     if (payload.battery) {
@@ -31,6 +33,8 @@ export const useRobotStore = defineStore('robot', () => {
         accel_z: payload.imu.accel_z,
       }
     }
+    sensorCount.value++
+    lastSensorTs.value = new Date().toLocaleTimeString()
   }
 
   function startSubscriptions() {
@@ -41,5 +45,5 @@ export const useRobotStore = defineStore('robot', () => {
     wsClient.offSensor(handleSensor)
   }
 
-  return { battery, joints, imu, startSubscriptions, stopSubscriptions }
+  return { battery, joints, imu, sensorCount, lastSensorTs, startSubscriptions, stopSubscriptions }
 })

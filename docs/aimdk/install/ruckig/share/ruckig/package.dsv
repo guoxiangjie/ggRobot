@@ -1,8 +1,0 @@
-source;share/ruckig/hook/cmake_prefix_path.ps1
-source;share/ruckig/hook/cmake_prefix_path.dsv
-source;share/ruckig/hook/cmake_prefix_path.sh
-source;share/ruckig/local_setup.bash
-source;share/ruckig/local_setup.dsv
-source;share/ruckig/local_setup.ps1
-source;share/ruckig/local_setup.sh
-source;share/ruckig/local_setup.zsh

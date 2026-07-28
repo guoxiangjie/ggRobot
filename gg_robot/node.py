@@ -24,8 +24,8 @@ from aimdk_msgs.srv import (
     SetVolume, GetVolume, SetMute, GetMute, SetMcInputSource,
     GetRobotResources, ExecuteActionResource,
 )
-from aimdk_msgs.msg import McLocomotionVelocity, PmuState, MessageHeader, PlayStateChange
-from sensor_msgs.msg import JointState, Imu, CompressedImage
+from aimdk_msgs.msg import McLocomotionVelocity, PmuState, MessageHeader, PlayStateChange, JointStateArray
+from sensor_msgs.msg import Imu, CompressedImage
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +106,7 @@ class X2Node(Node):
         self.battery: dict = {}
         self.arm_joints: list[dict] = []
         self.imu: dict = {}
+        self._sensor_recv = {"battery": 0, "arm": 0, "imu": 0}  # 收消息计数（诊断）
 
         # ── 音频播放状态缓存（用于精确等待 TTS 播完）──
         # 注：v0.9.0 文档无 /aima/hal/audio/play_state 话题，主用 estimated_duration 估时
@@ -118,6 +119,9 @@ class X2Node(Node):
         self._camera_frame: bytes | None = None
         self._camera_timestamp: float = 0.0
         self._camera_lock = threading.Lock()
+        self._camera_frame_count: int = 0          # 收帧计数（用于诊断）
+        self._camera_first_ts: float = 0.0         # 首帧时间
+        self._camera_last_ts: float = 0.0          # 末帧时间（供 camera_pusher 诊断无帧）
 
         # ── 相机 Topic 配置 ──
         # v0.8.1 已下线交互相机 rgb_head_front_center，不再列入
@@ -167,7 +171,7 @@ class X2Node(Node):
 
         # ── 订阅传感器 ──
         self.create_subscription(PmuState, "/aima/hal/pmu/state", self._on_battery, qos_profile_sensor_data)
-        self.create_subscription(JointState, "/aima/hal/joint/arm/state", self._on_arm, qos_profile_sensor_data)
+        self.create_subscription(JointStateArray, "/aima/hal/joint/arm/state", self._on_arm, qos_profile_sensor_data)
         self.create_subscription(Imu, "/aima/hal/imu/torso/state", self._on_imu, qos_profile_sensor_data)
 
         # ── 订阅音频播放状态（TTS 完成事件）──
@@ -178,8 +182,13 @@ class X2Node(Node):
 
         # ── 速度控制状态 ──
         self._input_registered = False
-        self._vel_timer = None
         self._vel_target = (0.0, 0.0, 0.0)
+        # 常驻 50Hz 速度发布定时器：在 __init__（rclpy 线程）创建一次，永不 create/destroy。
+        # 否则 cmd 线程在 _do_velocity 里频繁 create/destroy timer 会与 executor 竞态，
+        # 导致 executor.spin() 卡死、传感器回调停（ros2 topic hz 显示 publisher 正常，
+        # 但 gg_robot 收不到更新，前端表现为数据冻结）。timer 由 executor 调度，
+        # _do_velocity 只读写 _vel_target（tuple 整体替换，GIL 原子）。
+        self._vel_timer = self.create_timer(0.02, self._publish_velocity)
 
         self._wait_services()
         logger.info("✅ X2Node 就绪")
@@ -206,6 +215,9 @@ class X2Node(Node):
 
     # ── 传感器回调 ──
     def _on_battery(self, msg):
+        self._sensor_recv["battery"] += 1
+        if self._sensor_recv["battery"] == 1:
+            logger.info("🔋 首条 PmuState 收到，电池订阅正常")
         self.battery = {
             "percentage": round(msg.battery_remaining_capacity_percentage, 1),
             "voltage": round(msg.battery_pack_voltage, 2),
@@ -215,12 +227,19 @@ class X2Node(Node):
         }
 
     def _on_arm(self, msg):
+        self._sensor_recv["arm"] += 1
+        if self._sensor_recv["arm"] == 1:
+            logger.info("🦾 首条 JointStateArray 收到，手臂订阅正常")
+        # aimdk_msgs/JointStateArray：msg.joints 是对象数组，每个含 name/position/velocity/effort
         self.arm_joints = [
-            {"name": n, "position": round(p, 3), "velocity": round(v, 3)}
-            for n, p, v in zip(msg.name, msg.position, msg.velocity)
+            {"name": j.name, "position": round(j.position, 3), "velocity": round(j.velocity, 3)}
+            for j in msg.joints
         ]
 
     def _on_imu(self, msg):
+        self._sensor_recv["imu"] += 1
+        if self._sensor_recv["imu"] == 1:
+            logger.info("📐 首条 Imu 收到，IMU 订阅正常")
         self.imu = {
             "accel_x": round(msg.linear_acceleration.x, 2),
             "accel_y": round(msg.linear_acceleration.y, 2),
@@ -232,6 +251,17 @@ class X2Node(Node):
         with self._camera_lock:
             self._camera_frame = bytes(msg.data)
             self._camera_timestamp = time.time()
+            self._camera_last_ts = self._camera_timestamp
+            self._camera_frame_count += 1
+
+            # 首帧日志 + 每300帧(约10秒@30Hz)统计一次
+            if self._camera_frame_count == 1:
+                self._camera_first_ts = self._camera_timestamp
+                logger.info(f"📷 收到首帧！相机={self._active_camera}, 大小={len(self._camera_frame)}B")
+            elif self._camera_frame_count % 300 == 0:
+                elapsed = self._camera_timestamp - self._camera_first_ts
+                avg_fps = self._camera_frame_count / max(elapsed, 0.001)
+                logger.info(f"📷 相机帧 #{self._camera_frame_count}, 大小={len(self._camera_frame)}B, 平均fps≈{avg_fps:.0f}")
 
     def _on_play_state(self, msg: PlayStateChange):
         """音频播放状态变化（TTS 完成事件）"""
@@ -245,20 +275,20 @@ class X2Node(Node):
         v0.9.0 文档无 TTS 完成回调话题，以 PlayTtsResponse.estimated_duration 估时为主；
         若实机仍存在 /aima/hal/audio/play_state 话题，期间收到 STOPED 则提前返回。
         """
-        from rclpy import spin_once as _spin_once
         start = time.time()
         est_ms = getattr(self, "_last_tts_duration_ms", 0) or 0
         # 估时(秒) + 0.3s 余量；无估值时退化为纯等事件
         target = start + (est_ms / 1000.0 + 0.3) if est_ms > 0 else None
         deadline = start + timeout
         while time.time() < deadline:
-            _spin_once(self, timeout_sec=0.05)
             # play_state 收到 STOPED（且本次期间）→ 提前返回
+            # executor 在独立线程 spin，回调正常触发，无需在此手动 spin
             if self._play_state == 2 and self._play_state_ts > start:
                 return True
             # 已等够 estimated_duration → 视为播完
             if target is not None and time.time() >= target:
                 return True
+            time.sleep(0.05)
         logger.warning(f"⏱️ TTS 等待超时({timeout}s)，est={est_ms}ms")
         return False
 
@@ -267,13 +297,12 @@ class X2Node(Node):
         req = GetMcAction.Request()
         req.request.header.stamp = self.get_clock().now().to_msg()
         future = self.action_client.call_async(req)
-        t0 = time.time()
-        while time.time() - t0 < 0.5:
-            from rclpy import spin_once as _spin_once
-            _spin_once(self, timeout_sec=0.05)
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 0.5:
             if future.done():
                 r = future.result()
                 return r.info.status.value if r else None
+            time.sleep(0.02)
         return None
 
     def wait_motion_done(self, timeout: float = 30.0) -> bool:
@@ -309,10 +338,9 @@ class X2Node(Node):
 
     # ── 相机管理 ──
     def list_cameras(self) -> list[dict]:
-        """返回所有相机（均视为可用，DDS discovery 可能延迟，由订阅时实际匹配决定）"""
+        """返回所有相机及当前选中状态"""
         result = []
         for cam_id, cfg in self._camera_topics.items():
-            cfg["active"] = True
             result.append({
                 "id": cam_id,
                 "label": cfg["label"],
@@ -337,20 +365,30 @@ class X2Node(Node):
             self.destroy_subscription(self._cam_sub)
             self._cam_sub = None
 
-        # 清空帧缓存
+        # 清空帧缓存 + 重置诊断计数器
         with self._camera_lock:
             self._camera_frame = None
             self._camera_timestamp = 0.0
+            self._camera_frame_count = 0
+            self._camera_first_ts = 0.0
+            self._camera_last_ts = 0.0
 
-        # 创建新订阅
+        # 用内置 qos_profile_sensor_data（完整 DDS profile）。ros2 topic echo 即用此类 QoS，
+        # 实测能匹配 RELIABLE+VOLATILE publisher 稳定收到 30Hz JPEG（publisher 在线、echo 可收、
+        # 仅 gg_robot 收不到 → 排除驱动/网络/QoS 兼容性）。
+        # ⚠️ 之前手搓 QoSProfile(reliability=RELIABLE, durability=VOLATILE, history=KEEP_LAST, depth=1)
+        # 字段不全（lifespan/deadline/liveliness 未设），DDS 协商失败、Subscription count=0、收不到帧。
+        # 更早用 qos_profile_sensor_data "收不到" 的真正原因是 executor 卡死（_on_camera 不调度），
+        # 非 QoS —— 现已修（常驻 timer 消除 cmd 线程 timer 竞态）。
+        qos = qos_profile_sensor_data
         self._cam_sub = self.create_subscription(
             CompressedImage,
             cfg["topic"],
             self._on_camera,
-            qos_profile_sensor_data,  # 用内置 sensor QoS（和 IMU 同路径，确保 DDS 注册；能匹配 RELIABLE publisher）
+            qos,
         )
         self._active_camera = camera_id
-        logger.info(f"📷 切换相机: {cfg['label']} ({cfg['topic']})")
+        logger.info(f"📷 切换相机: {cfg['label']} ({cfg['topic']}) qos=qos_profile_sensor_data")
         return {"ok": True, "camera": cfg["label"], "topic": cfg["topic"]}
 
     def get_active_camera(self) -> str:
@@ -382,12 +420,24 @@ class X2Node(Node):
     # ── 命令处理 ──
     def process_commands(self):
         """处理命令队列中的待执行命令（由 rclpy 线程调用）"""
-        # 相机兜底：启动时若没选到（DDS discovery 延迟），定期重试订阅
-        if not self._active_camera:
-            self._cam_try_tick = getattr(self, '_cam_try_tick', 0) + 1
-            if self._cam_try_tick >= 50:  # ~0.5s (50×10ms)
-                self._cam_try_tick = 0
-                self._try_select_camera_once()
+        # 相机兜底：DDS 跨 SoC 发现需时（10-30s+），不主动销毁订阅切换，
+        # 否则每次切换都会重置 DDS 发现过程。订阅创建后等待 publisher 自然匹配即可。
+        # 仅打印诊断日志，切换由用户通过 API 手动触发。
+        if self._active_camera and self._camera_last_ts == 0.0:
+            now = time.time()
+            cam_wait_start = getattr(self, '_cam_wait_start', 0.0)
+            if cam_wait_start == 0.0:
+                self._cam_wait_start = now
+            elif now - cam_wait_start > 60.0:
+                # 60s 还没帧，打印提示但不切换（DDS 没发现 publisher 的话切换也没用）
+                logger.warning(
+                    f"📷 {self._active_camera} 已等待 {now - cam_wait_start:.0f}s 仍未收到帧，"
+                    f"继续等待 DDS 发现...（可用 ros2 topic info 确认 publisher 是否在线）"
+                )
+                self._cam_wait_start = now  # 重置，下次60s后再提醒
+        elif self._active_camera and self._camera_last_ts > 0.0:
+            self._cam_wait_start = 0.0  # 有帧则重置
+
         while True:
             cmd = _cmd_queue.get_nowait()
             if cmd is None:
@@ -492,11 +542,10 @@ class X2Node(Node):
             self._input_registered = True
             logger.info("🕹️ web_ui 已注册运动控制输入源")
 
-    def _ensure_vel_timer(self):
-        if self._vel_timer is None:
-            self._vel_timer = self.create_timer(0.02, self._publish_velocity)
-
     def _publish_velocity(self):
+        # 未注册输入源前不发布（避免无意义流量）；注册后持续 50Hz 发，全零=停车。
+        if not self._input_registered:
+            return
         fwd, lat, ang = self._vel_target
         msg = McLocomotionVelocity()
         msg.header = MessageHeader()
@@ -509,13 +558,10 @@ class X2Node(Node):
 
     def _do_velocity(self, forward: float, lateral: float, angular: float):
         self._register_input_source()
+        # 只更新目标速度（tuple 原子替换）。timer 常驻，不在此 create/destroy，
+        # 避免 cmd 线程操作 rclpy 实体触发 executor 竞态卡死 spin。
+        # 全零时常驻 timer 持续发全零 = 停车，满足「持续 50Hz、松开发全零」要求。
         self._vel_target = (forward, lateral, angular)
-        if forward == 0.0 and lateral == 0.0 and angular == 0.0:
-            if self._vel_timer:
-                self.destroy_timer(self._vel_timer)
-                self._vel_timer = None
-        else:
-            self._ensure_vel_timer()
 
     # ── 系统状态 ──
     def _do_system(self) -> dict:
@@ -636,6 +682,8 @@ class X2Node(Node):
                 req.file.priority_weight = 0
                 return req
             resp = call_with_retry(self, self.audio_client, build, "PlayAudioFile", timeout=5.0, retries=1)
+            # 注意：PlayAudioFile.Response 的字段官方就叫 reponse（少个s，aimdk 笔误），
+            # 详见 docs/aimdk install/aimdk_msgs/share/aimdk_msgs/srv/PlayAudioFile.srv。勿"修正"为 response。
             ok = resp is not None and resp.reponse.status.value == 1
             return {"ok": ok}
 
@@ -719,11 +767,10 @@ class X2Node(Node):
 
     # ── 工具方法 ──
     def _sleep(self, sec: float):
-        """rclpy 安全的 sleep（用 spin_once 循环替代 time.sleep）"""
-        t0 = time.time()
-        while time.time() - t0 < sec:
-            from rclpy import spin_once as _spin_once
-            _spin_once(self, timeout_sec=0.01)
+        """命令线程安全的 sleep（executor 在独立线程 spin，不会饿死回调）"""
+        end = time.monotonic() + sec
+        while time.monotonic() < end:
+            time.sleep(min(0.05, max(0.0, end - time.monotonic())))
 
     # ── 动作序列 ──
     def _do_action_sequence(self) -> dict:

@@ -79,6 +79,7 @@ async def ws_endpoint(ws: WebSocket):
 
 async def sensor_pusher(interval: float = 0.2):
     """每 200ms 推送电池/IMU/关节数据"""
+    _diag_counter = 0
     while True:
         await asyncio.sleep(interval)
         if not _clients:
@@ -101,12 +102,29 @@ async def sensor_pusher(interval: float = 0.2):
         except Exception as e:
             logger.error(f"传感器推送异常: {e}")
 
+        # 周期诊断：每 ~10s 打印 rclpy 传感器回调计数，确认 executor 是否还在调度回调。
+        # 若 b/a/i 计数不再增长 → executor.spin 卡住/退出（怀疑 cmd 线程频繁 create/destroy
+        # timer 触发竞态），而 sensor_pusher 仍在广播旧对象，前端表现为"值不变"。
+        _diag_counter += 1
+        if _diag_counter % 50 == 0:
+            recv = getattr(_node, "_sensor_recv", {})
+            logger.info(
+                f"📊 传感器回调计数 b/a/i = "
+                f"{recv.get('battery', 0)}/{recv.get('arm', 0)}/{recv.get('imu', 0)} "
+                f"| WS 客户端 {len(_clients)}"
+            )
+
 
 async def camera_pusher(interval: float = 0.1):
     """每 100ms 推送相机 JPEG 帧（二进制）"""
+    _no_frame_since: float = 0.0  # 首次进入不告警，等首帧出现后再计时
+    _warned = False
+
     while True:
         await asyncio.sleep(interval)
         if not _clients:
+            _no_frame_since = 0.0
+            _warned = False
             continue
 
         from .. import node as node_mod
@@ -116,7 +134,22 @@ async def camera_pusher(interval: float = 0.1):
 
         frame = _node.get_camera_frame()
         if frame is None:
+            now = time.time()
+            if _no_frame_since == 0.0:
+                # 检查后端是否已经收到过帧（_camera_last_ts > 0 表示曾经收到过）
+                if _node._camera_last_ts > 0:
+                    _no_frame_since = now  # 曾经有帧但现在没了，开始计时
+            elif now - _no_frame_since > 5.0 and not _warned:
+                logger.warning(
+                    f"📷 相机帧推送中断 {now - _no_frame_since:.0f}s！"
+                    f"活跃相机={_node._active_camera}, "
+                    f"总收帧={_node._camera_frame_count}"
+                )
+                _warned = True
             continue
+
+        _no_frame_since = 0.0
+        _warned = False
 
         # 4 字节时间戳(ms) + JPEG 数据
         ts_bytes = struct.pack(">I", int(time.time() * 1000) & 0xFFFFFFFF)

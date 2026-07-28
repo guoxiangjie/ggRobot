@@ -1,4 +1,0 @@
-CommonRequest header
-
-AgentProperties contents
-

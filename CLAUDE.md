@@ -90,7 +90,6 @@ ggRobot/
 | SetMute/GetMute | `GET\|POST /api/mute` | 静音 |
 | PlayMediaFile(原PlayAudioFile)/PlayVideo | `POST /api/media/play` | 音视频播放（v0.8.0改名，结构扁平化） |
 | SetMcAction | `POST /api/mode` | 运动模式切换（⚠️v0.8.2+ 用 action_desc 字符串: PASSIVE/DAMPING/JOINT/STAND/LOCOMOTION_DEFAULT，非数字ID） |
-| CompressedImage | WS推送 | 相机帧（RGBD前视 `/aima/hal/sensor/rgbd_head_front/rgb_image/compressed`，10Hz，RELIABLE） |
 
 ### 消息 Header 类型差异（必坑）
 

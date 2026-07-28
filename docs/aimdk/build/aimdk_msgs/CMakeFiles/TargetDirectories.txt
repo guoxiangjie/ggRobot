@@ -1,6 +1,0 @@
-/home/agi/aimdk/build/aimdk_msgs/CMakeFiles/edit_cache.dir
-/home/agi/aimdk/build/aimdk_msgs/CMakeFiles/rebuild_cache.dir
-/home/agi/aimdk/build/aimdk_msgs/CMakeFiles/list_install_components.dir
-/home/agi/aimdk/build/aimdk_msgs/CMakeFiles/install.dir
-/home/agi/aimdk/build/aimdk_msgs/CMakeFiles/install/local.dir
-/home/agi/aimdk/build/aimdk_msgs/CMakeFiles/install/strip.dir
