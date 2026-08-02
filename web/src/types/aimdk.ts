@@ -91,7 +91,7 @@ export interface McPresetMotion {
 }
 
 export interface McControlArea {
-  value: number // 1=左手 2=右手 4=头部 8=腰部
+  value: number // v0.8.0+：1=左臂 2=右臂 3=双臂 11=全身（非旧位掩码 1/2/4/8）
 }
 
 export interface SetMcPresetMotionRequest {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getSystem } from '@/api/fastapi'
 import { NTag, NButton } from 'naive-ui'
 import IconRefresh from '~icons/mdi/refresh'
@@ -21,6 +21,9 @@ function sysLabel(v: number): string {
   const map: Record<number, string> = { 0: '初始', 1: '就绪', 2: '迁移中', 3: '回滚', 4: '异常', 5: '异常迁移' }
   return map[v] ?? String(v)
 }
+
+// 是否处于开发者模式（cur_state 以 Develop_ 开头；机器正常业务态实测为 "Business"）
+const isDevMode = computed(() => !!info.value.system?.state?.startsWith('Develop_'))
 
 async function refresh() {
   loading.value = true
@@ -46,15 +49,17 @@ onMounted(refresh)
 
     <div class="grid">
       <!-- 系统状态 -->
-      <div class="card">
+      <div class="card" :class="{ 'card-dev': isDevMode }">
         <div class="card-label">系统状态</div>
         <div class="card-value" v-if="info.system">
           <NTag :type="info.system.status === 1 ? 'success' : info.system.status === 4 ? 'error' : 'warning'" round>
             {{ sysLabel(info.system.status) }}
           </NTag>
           <span class="sub">{{ info.system.state }}</span>
+          <NTag v-if="isDevMode" type="error" size="small" round>开发者模式</NTag>
         </div>
         <div class="card-empty" v-else>—</div>
+        <p v-if="isDevMode" class="dev-note">⚠ 原生能力已停用，完成开发后请在「控制」页切回 Ready</p>
       </div>
 
       <!-- 运动模式 -->
@@ -110,6 +115,8 @@ onMounted(refresh)
 .card-value { display: flex; align-items: center; gap: 12px; }
 .sub { font-size: 15px; font-weight: 600; }
 .card-empty { font-size: 20px; color: var(--text-secondary); }
+.card-dev { border-color: rgba(244, 75, 75, 0.5); }
+.dev-note { margin: 10px 0 0; font-size: 12px; color: var(--danger); }
 
 .conn-grid { display: flex; flex-direction: column; gap: 8px; }
 .conn-item { display: flex; align-items: center; gap: 12px; }

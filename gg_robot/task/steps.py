@@ -92,7 +92,7 @@ def _tts(node, step: dict):
         else:
             mid = m.get("motion_id", 0)
             if mid:
-                node._do_motion(int(m.get("area", 0)), int(mid))
+                node._do_motion(int(m.get("area", 0)), int(mid), interrupt=False)
                 extras.append(f"动作#{mid}")
     # 3. 触发 TTS（开始说话，与上面并行）
     result = node._do_tts(text)
@@ -118,10 +118,11 @@ def _tts(node, step: dict):
 
 
 def _motion(node, step: dict):
-    """预设动作"""
+    """预设动作（文档 5.1.4）。interrupt 默认 True 打断前动作；step.interrupt 可覆盖"""
     area = step.get("area", 0)
     motion_id = step["motion_id"]
-    result = node._do_motion(area, motion_id)
+    interrupt = step.get("interrupt", True)
+    result = node._do_motion(area, motion_id, interrupt)
     ok = result.get("ok", False)
     logger.info(f"  🕺 Motion area={area} id={motion_id} {'✅' if ok else '❌'}")
 

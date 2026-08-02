@@ -59,6 +59,12 @@ export async function getSystem() {
   }
 }
 
+// ── 开发者模式（系统状态迁移）──
+export async function migrateSystemState(state: string) {
+  const { data } = await api.post('/api/system/migrate', { state })
+  return data as { ok: boolean; in_progress?: boolean; code?: number; state?: string; status?: number; message?: string }
+}
+
 // ── 表情 ──
 export async function playEmoji(emotionId: number, mode: number = 1) {
   const { data } = await api.post('/api/emoji', { emotion_id: emotionId, mode })
@@ -145,6 +151,62 @@ export async function getTaskStatus() { const { data } = await api.get('/api/tas
 export async function getCapabilities() { const { data } = await api.get('/api/capabilities'); return data as { capabilities: Capability[] } }
 export interface RobotResource { resource_key: string; name: string; version: string; type: string }
 export async function getResources() { const { data } = await api.get('/api/resources'); return data as { ok: boolean; error?: string; resources: RobotResource[] } }
+export async function playResource(resourceKey: string, version: string, resourceType: string) {
+  const { data } = await api.post('/api/resources/play', { resource_key: resourceKey, version, resource_type: resourceType })
+  return data as { ok: boolean; code?: number; message?: string; error?: string }
+}
+
+// ── 手机端按键绑定 ──
+export interface PhoneKeySlot {
+  slot: number; name: string; resource_key: string; version: string; resource_type: string
+}
+export async function getPhoneKeys() {
+  const { data } = await api.get('/api/phone/keys')
+  return data as { keys: PhoneKeySlot[]; updated_at: string }
+}
+export async function savePhoneKeys(keys: PhoneKeySlot[]) {
+  const { data } = await api.put('/api/phone/keys', { keys })
+  return data as { keys: PhoneKeySlot[]; updated_at: string }
+}
+
+// ── 自由任务（项目）──
+export interface ProjectNode {
+  id?: string; name: string; icon: string; type: string
+  [key: string]: unknown
+}
+export interface Project {
+  id?: string; name: string; desc: string; icon: string
+  nodes: ProjectNode[]; updated_at?: string; node_count?: number
+}
+export async function getProjects() {
+  const { data } = await api.get('/api/projects')
+  return data as { projects: { id: string; name: string; desc: string; icon: string; node_count: number; updated_at: string }[] }
+}
+export async function getProject(id: string) {
+  const { data } = await api.get(`/api/projects/${id}`)
+  return data as Project
+}
+export async function saveProject(project: Project) {
+  const { data } = await api.post('/api/projects', project)
+  return data as Project
+}
+export async function deleteProject(id: string) {
+  const { data } = await api.delete(`/api/projects/${id}`)
+  return data as { ok: boolean }
+}
+export async function runProjectNode(pid: string, nid: string) {
+  // 单节点执行可能较长（velocity/tts wait_done），timeout:0 不限
+  const { data } = await api.post(`/api/projects/${pid}/nodes/${nid}/run`, {}, { timeout: 0 })
+  return data as { ok: boolean; error?: string; node_id?: string }
+}
+export async function stopProjectNode() {
+  const { data } = await api.post('/api/projects/stop')
+  return data as { ok: boolean }
+}
+export async function getProjectStatus() {
+  const { data } = await api.get('/api/projects/status')
+  return data as { running: boolean; node_id: string }
+}
 export async function getCameras() { const { data } = await api.get('/api/cameras'); return data as { cameras: { id: string; label: string; topic: string; active: boolean; selected: boolean }[] } }
 export async function switchCamera(cameraId: string) { const { data } = await api.post('/api/camera/switch', { camera_id: cameraId }); return data as { ok: boolean; error?: string } }
 

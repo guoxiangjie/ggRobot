@@ -6,6 +6,9 @@
 #   make build     # 构建前端
 #   make deploy    # 增量化部署（不删旧目录）
 #   make ship      # 构建前端 + 清旧目录 + 全新部署
+#   make stop      # 停远端服务（杀进程 + 释放 8000）
+#   make start     # SSH 前台启动服务
+#   make restart   # stop + start（干净重启，解决 address already in use）
 
 ORIN_HOST := $(shell grep -v '^\#' ip.txt 2>/dev/null | head -1)
 ORIN_DIR  ?= ~/ggRobot
@@ -27,7 +30,7 @@ RSYNC_FLAGS = -avz \
 	--exclude 'ip.txt' \
 	--exclude 'logo.svg'
 
-.PHONY: build deploy clean ship start
+.PHONY: build deploy clean ship start stop restart
 
 # ── 前端构建 ──
 build:
@@ -54,6 +57,14 @@ ship: build clean deploy
 	@echo ""
 	@echo "✅ 构建+全量部署完成"
 	@echo "   启动: make start"
+
+# ── 停止远端服务（杀进程 + 释放 8000）──
+stop:
+	@echo "🛑 停止 $(ORIN_HOST) 上的 ggRobot..."
+	-ssh $(ORIN_HOST) "pkill -f gg_robot; sleep 2; pkill -9 -f gg_robot 2>/dev/null; sleep 0.5; ss -tlnp 2>/dev/null | grep ':8000' || echo '✅ 8000 已释放'"
+
+# ── 干净重启（先停后启，避免端口占用）──
+restart: stop start
 
 # ── SSH 启动服务 ──
 start:

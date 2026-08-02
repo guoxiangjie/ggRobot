@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, h, type Component } from 'vue'
+import { onMounted, h, computed, type Component } from 'vue'
 import { storeToRefs } from 'pinia'
 import { NLayout, NLayoutHeader, NLayoutContent, NMenu, NConfigProvider, NMessageProvider, darkTheme, zhCN, NTag, type MenuOption } from 'naive-ui'
 import { useRouter, useRoute } from 'vue-router'
 import { useConnectionStore } from '@/stores/connection'
 import IconDashboard from '~icons/mdi/view-dashboard-outline'
 import IconTask from '~icons/mdi/run'
+import IconProject from '~icons/mdi/view-grid-outline'
 import IconVoice from '~icons/mdi/microphone'
 import IconControl from '~icons/mdi/gamepad-circle-outline'
 import IconCamera from '~icons/mdi/webcam'
@@ -13,12 +14,14 @@ import IconModel from '~icons/mdi/cube-outline'
 import IconMedia from '~icons/mdi/filmstrip-box-multiple'
 import IconEmoji from '~icons/mdi/emoticon-outline'
 import IconSystem from '~icons/mdi/cog-outline'
+import IconLinkcraft from '~icons/mdi/human-handsup'
 import IconLanConnect from '~icons/mdi/lan-connect'
 import IconLanDisconnect from '~icons/mdi/lan-disconnect'
 
 const router = useRouter()
 const route = useRoute()
 const conn = useConnectionStore()
+const fullscreen = computed(() => !!route.meta.fullscreen)
 const { connected, connecting } = storeToRefs(conn)
 
 onMounted(() => {
@@ -33,11 +36,13 @@ const menuOptions: MenuOption[] = [
   { label: '仪表盘', key: 'dashboard', icon: renderIcon(IconDashboard) },
   { label: '控制',   key: 'control',   icon: renderIcon(IconControl) },
   { label: '作业',   key: 'task',      icon: renderIcon(IconTask) },
+  { label: '自由',   key: 'project',   icon: renderIcon(IconProject) },
   { label: '语音',   key: 'voice',     icon: renderIcon(IconVoice) },
   { label: '相机',   key: 'camera',    icon: renderIcon(IconCamera) },
   { label: '孪生',   key: 'model',     icon: renderIcon(IconModel) },
   { label: '媒体',   key: 'media',     icon: renderIcon(IconMedia) },
   { label: '表情',   key: 'emoji',     icon: renderIcon(IconEmoji) },
+  { label: '灵创',   key: 'linkcraft', icon: renderIcon(IconLinkcraft) },
   { label: '系统',   key: 'system',    icon: renderIcon(IconSystem) },
 ]
 
@@ -49,7 +54,10 @@ function onMenuChange(key: string) {
 <template>
   <NConfigProvider :theme="darkTheme" :locale="zhCN">
     <NMessageProvider>
-    <NLayout class="app">
+    <router-view v-if="fullscreen" v-slot="{ Component }">
+      <keep-alive><component :is="Component" /></keep-alive>
+    </router-view>
+    <NLayout v-else class="app">
       <NLayoutHeader bordered class="topbar-wrap">
         <div class="topbar">
           <span class="brand">ggRobot</span>
@@ -125,9 +133,21 @@ html, body, #app { height: 100%; margin: 0; overflow: hidden; }
   align-items: center;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 12px;
   height: 52px;
-  gap: 28px;
+  gap: 10px;
+}
+
+/* 菜单项间距：menu 已 flex:1 占满中间空间，padding 给宽裕点更舒展 */
+.topbar .n-menu-item-content {
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+
+/* 菜单整体水平居中：占满 brand 与 conn-status 之间的剩余空间，items 居中排列 */
+.topbar .n-menu {
+  flex: 1 1 auto;
+  justify-content: center;
 }
 
 .content {

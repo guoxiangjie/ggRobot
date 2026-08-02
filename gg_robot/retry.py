@@ -12,8 +12,11 @@ from typing import Callable, TypeVar
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 8
-TIMEOUT_SEC = 0.25
+# 单次 timeout 必须 > service 实际响应时间（实测 GetRobotResources 等 0.6~2.2s）。
+# 否则 response 还没回就放弃、重新 call_async，旧 response 被丢弃，永远等不到 → 8 次全失败。
+# fast service（volume/mute 等）不受影响：future 早 done，循环首次检查即返回，不会傻等。
+MAX_RETRIES = 3
+TIMEOUT_SEC = 3.0
 
 
 def call_with_retry(

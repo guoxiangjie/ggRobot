@@ -5,6 +5,12 @@ import threading
 import logging
 import time
 
+# ⚠️ 多网卡分区背景：X2 有 develop0/sensor0/wifi0/ssh0 多块网卡，FastDDS 默认自动挑网卡走 multicast，
+# ggRobot 进程可能和相机驱动挑到不同网卡 → 互相 discovery 不到（相机全黑、count_publishers=0）。
+# 曾尝试 ROS_LOCALHOST_ONLY=1 强制 loopback，但此环境 FastDDS 狂报
+# "TRANSPORT_UDP Invalid argument -> send" 且 discovery 瘫痪（service 全 0/13），故不采用。
+# 正解：用网线直连 develop0(10.0.1.41) 避免多网卡；或 FastDDS XML 指定网卡 whitelist。
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -27,7 +33,10 @@ def ros_spin():
     node_mod._node = node
     node_mod._cmd_queue = cmd_queue
 
-    executor = rclpy.executors.MultiThreadedExecutor()
+    # 显式多线程：默认 num_threads 某些 rclpy 版本为 1，会导致即使 ReentrantCallbackGroup
+    # 也只能串行执行，高频传感器回调（IMU 500Hz / arm 450Hz）饿死 service response。
+    # 给足线程，让 service client（独立 Reentrant group）能并行调度 response。
+    executor = rclpy.executors.MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
 
     # 命令处理独立线程 —— 耗时命令（_do_action_sequence / _do_run_task / wait_tts_done）
@@ -91,6 +100,9 @@ def main():
     # 3. 初始化内置任务
     from .task.store import init_builtin_tasks
     init_builtin_tasks()
+    # 初始化内置项目（自由任务模式）
+    from .project.store import init_builtin_projects
+    init_builtin_projects()
 
     # 4. 启动 FastAPI
     from .server import create_app

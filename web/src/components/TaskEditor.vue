@@ -21,6 +21,7 @@ import IconMedia from '~icons/mdi/filmstrip'
 import IconHttp from '~icons/mdi/api'
 import IconLinkcraft from '~icons/mdi/robot-outline'
 import { getResources, type RobotResource } from '@/api/fastapi'
+import { MOTION_OPTIONS, motionLabel, motionKey, parseMotionKey } from '@/config/motions'
 
 const props = defineProps<{ task: Task }>()
 const emit = defineEmits<{ saved: []; close: [] }>()
@@ -47,11 +48,6 @@ function linkcraftLabel(key: string) {
 
 // ── 步骤类型定义 ──
 interface ParamDef { name: string; label: string; type: string; required?: boolean; default?: unknown; options?: { label: string; value: unknown }[]; hint?: string }
-// v0.8.0+ area 编码：1=左臂 / 2=右臂 / 3=双臂 / 11=全身（旧位掩码 4=头部/8=腰部 已废弃）
-const AREA_OPTIONS = [
-  { label: '自动', value: 0 }, { label: '左臂', value: 1 }, { label: '右臂', value: 2 },
-  { label: '双臂', value: 3 }, { label: '全身', value: 11 },
-]
 // 运动模式 action_desc（v0.8.2+ 字符串，非数字ID）
 const MODE_OPTIONS = [
   { label: '稳定站立', value: 'STAND_DEFAULT' },
@@ -68,36 +64,7 @@ const HTTP_METHOD_OPTIONS = [
   { label: 'DELETE', value: 'DELETE' },
   { label: 'PATCH', value: 'PATCH' },
 ]
-// 预设动作 ID → 名称（⚠️v0.8.0 编码变动，部分 value 待实机用文档 preset_motion 页或 ros2 校准）
-const MOTION_OPTIONS = [
-  { label: '基础 · 抬手', value: 1001 },
-  { label: '基础 · 挥手', value: 1002 },
-  { label: '基础 · 握手', value: 1003 },
-  { label: '基础 · 飞吻', value: 1004 },
-  { label: '基础 · 击掌', value: 1008 },
-  { label: '基础 · 碰拳', value: 1009 },
-  { label: '基础 · 敬礼', value: 1013 },
-  { label: '组合 · 转身挥手', value: 2001 },
-  { label: '交互 · 鞠躬', value: 3001 },
-  { label: '交互 · 点赞', value: 3002 },
-  { label: '交互 · 比YE', value: 3003 },
-  { label: '基础 · 比心', value: 1007 },
-  { label: '交互 · 悲伤', value: 3006 },
-  { label: '交互 · 轻轻挥手', value: 3007 },
-  { label: '交互 · 拥抱', value: 3008 },
-  { label: '交互 · 胸前打叉', value: 3009 },
-  { label: '交互 · 胸前挥手', value: 3010 },
-  { label: '交互 · 加油', value: 3011 },
-  { label: '交互 · 低空飞吻', value: 3012 },
-  { label: '交互 · 巴斯舞1', value: 3013 },
-  { label: '交互 · 巴斯舞2', value: 3014 },
-  { label: '交互 · 击掌', value: 3015 },
-  { label: '交互 · 说话手势', value: 3016 },
-  { label: '交互 · 拍照姿势', value: 3018 },
-  { label: '交互 · 三连拍', value: 3019 },
-  { label: '头部 · 点头', value: 4001 },
-  { label: '头部 · 摇头', value: 4002 },
-]
+// MOTION_OPTIONS / motionLabel 已移至 @/config/motions（权威 29 组合，避免无效 motion×area）
 // 表情 ID → 名称（来自 AimDK 文档枚举）
 const EMOJI_OPTIONS = [
   { label: '眨眼', value: 1 },
@@ -122,7 +89,6 @@ const EMOJI_OPTIONS = [
   { label: '崇拜', value: 200 },
   { label: '充电', value: 220 },
 ]
-function motionLabel(id: number) { return MOTION_OPTIONS.find(o => o.value === id)?.label || `动作#${id}` }
 function emojiLabel(id: number) { return EMOJI_OPTIONS.find(o => o.value === id)?.label || `表情#${id}` }
 const STEP_TYPES = [
   { type: 'tts', label: '语音播报', icon: IconTts, color: '#4CAF50' },
@@ -145,7 +111,7 @@ const STEP_PARAMS: Record<string, ParamDef[]> = {
     { name: 'delay', label: '额外等待(s)', type: 'number', default: 0.5, hint: '播完后额外等待，给表情/动作收尾' },
   ],
   wait: [{ name: 'duration', label: '等待时间(s)', type: 'number', default: 2 }],
-  motion: [{ name: 'motion_id', label: '动作', type: 'number', required: true }, { name: 'area', label: '区域', type: 'select', default: 0, options: AREA_OPTIONS }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 1 }],
+  motion: [{ name: 'motion_id', label: '动作', type: 'number', required: true, hint: 'motion+area 绑定组合；需 STAND_DEFAULT 模式' }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 1 }],
   emoji: [{ name: 'emotion_id', label: '表情', type: 'number', required: true }, { name: 'mode', label: '模式', type: 'select', default: 1, options: [{ label: '播放一次', value: 1 }, { label: '循环', value: 2 }] }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 0.5 }],
   velocity: [{ name: 'forward', label: '前后(m/s)', type: 'number', default: 0.3 }, { name: 'lateral', label: '左右(m/s)', type: 'number', default: 0 }, { name: 'angular', label: '旋转(rad/s)', type: 'number', default: 0 }, { name: 'duration', label: '持续时间(s)', type: 'number', default: 2 }],
   volume: [{ name: 'volume', label: '音量(0-100)', type: 'number', default: 50 }],
@@ -172,6 +138,8 @@ const STEP_DEFAULTS: Record<string, Record<string, unknown>> = {
   ),
   // TTS 节点支持并行挂载多个动作和表情，默认精确等待播完 + 等动作做完
   tts: { text: '', wait_done: true, motion_wait: true, delay: 0.5, motions: [], emojis: [] },
+  // 预设动作：motion+area 绑定（默认右手挥手 1002:2）
+  motion: { motion_id: 1002, area: 2, delay: 1 },
   // 灵创动作：resource_key + version/type/name（从机器人资源拉取）
   linkcraft: { resource_key: '', version: '', type: '', name: '', delay: 2 },
 }
@@ -199,7 +167,7 @@ function stepSummary(step: TaskStep): string {
       if (emojis.length) extras.push(`表情×${emojis.length}`)
       return extras.length ? `${text} · ${extras.join(' ')}` : text
     }
-    case 'motion': return motionLabel(step.motion_id as number)
+    case 'motion': return motionLabel(Number(step.motion_id), Number(step.area))
     case 'emoji': return emojiLabel(step.emotion_id as number)
     case 'velocity': return `${step.forward} / ${step.lateral} / ${step.angular} m/s · ${step.duration}s`
     case 'wait': return `${step.duration}s`
@@ -252,18 +220,14 @@ function moveStep(index: number, dir: -1 | 1) {
 const mountOpen = ref(false)
 const mountMode = ref<'motion' | 'emoji'>('motion')
 const mountStepIndex = ref(-1)
-const mountMotion = ref<{ kind: 'preset' | 'linkcraft'; motion_id: number; area: number; resource_key: string }>({ kind: 'preset', motion_id: 1002, area: 0, resource_key: '' })
+const mountMotion = ref<{ kind: 'preset' | 'linkcraft'; motion_id: number; area: number; resource_key: string }>({ kind: 'preset', motion_id: 1002, area: 2, resource_key: '' })
 const mountEmoji = ref<number>(90)
-
-function areaLabel(area: number) {
-  return AREA_OPTIONS.find(o => o.value === area)?.label || '自动'
-}
 
 function openMount(stepIndex: number, mode: 'motion' | 'emoji') {
   mountStepIndex.value = stepIndex
   mountMode.value = mode
   if (mode === 'motion') {
-    mountMotion.value = { kind: 'preset', motion_id: 1002, area: 0, resource_key: '' }
+    mountMotion.value = { kind: 'preset', motion_id: 1002, area: 2, resource_key: '' }
   } else {
     mountEmoji.value = 90
   }
@@ -365,7 +329,7 @@ async function handleSave() {
                     :class="m.kind === 'linkcraft' ? 'linkcraft-item' : 'motion-item'"
                   >
                     <span v-if="m.kind === 'linkcraft'" class="mount-tag-text">{{ linkcraftLabel(m.resource_key) }}</span>
-                    <span v-else class="mount-tag-text">{{ motionLabel(m.motion_id) }} · {{ areaLabel(m.area) }}</span>
+                    <span v-else class="mount-tag-text">{{ motionLabel(Number(m.motion_id), Number(m.area)) }}</span>
                     <NButton size="tiny" text type="error" @click="removeMount(i, 'motion', mi)">✕</NButton>
                   </div>
                   <div
@@ -445,10 +409,11 @@ async function handleSave() {
             />
             <NSelect
               v-else-if="param.name === 'motion_id'"
-              v-model:value="(stepEditData as any)[param.name]"
+              :value="motionKey(Number((stepEditData as any).motion_id) || 0, Number((stepEditData as any).area) || 0)"
               size="small"
               filterable
               :options="MOTION_OPTIONS"
+              @update:value="(v: string) => { const c = parseMotionKey(v); (stepEditData as any).motion_id = c.motion; (stepEditData as any).area = c.area }"
             />
             <NSelect
               v-else-if="param.name === 'emotion_id'"
@@ -504,11 +469,11 @@ async function handleSave() {
           <template v-else>
             <div class="form-row">
               <span class="form-label">动作</span>
-              <NSelect v-model:value="mountMotion.motion_id" size="small" filterable :options="MOTION_OPTIONS" />
-            </div>
-            <div class="form-row">
-              <span class="form-label">区域</span>
-              <NSelect v-model:value="mountMotion.area" size="small" :options="AREA_OPTIONS" />
+              <NSelect
+                :value="motionKey(mountMotion.motion_id, mountMotion.area)"
+                size="small" filterable :options="MOTION_OPTIONS"
+                @update:value="(v: string) => { const c = parseMotionKey(v); mountMotion.motion_id = c.motion; mountMotion.area = c.area }"
+              />
             </div>
           </template>
         </template>

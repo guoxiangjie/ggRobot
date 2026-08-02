@@ -19,7 +19,7 @@ async def broadcast_json(data: dict):
     """向所有客户端推送 JSON"""
     dead: list[WebSocket] = []
     text = json.dumps(data, ensure_ascii=False)
-    for ws in _clients:
+    for ws in list(_clients):  # 遍历副本，避免遍历途中新连接 add 导致 Set changed size during iteration
         try:
             await ws.send_text(text)
         except Exception:
@@ -31,7 +31,7 @@ async def broadcast_json(data: dict):
 async def broadcast_bytes(data: bytes):
     """向所有客户端推送二进制数据（相机帧）"""
     dead: list[WebSocket] = []
-    for ws in _clients:
+    for ws in list(_clients):  # 遍历副本，避免遍历途中新连接 add 导致 Set changed size during iteration
         try:
             await ws.send_bytes(data)
         except Exception:

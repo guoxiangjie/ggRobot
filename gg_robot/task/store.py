@@ -134,3 +134,52 @@ def init_builtin_tasks():
     for t in builtins:
         save_task(t)
     logger.info(f"📦 已创建 {len(builtins)} 个内置任务")
+
+
+# ═══════════════════════════════════════════════
+# 手机端按键绑定（~/ggRobot/phone_keys.json，单文件 8 位）
+# ═══════════════════════════════════════════════
+
+PHONE_KEYS_PATH = Path.home() / "ggRobot" / "phone_keys.json"
+
+
+def _default_phone_keys() -> dict:
+    """8 个空按键位"""
+    return {
+        "keys": [
+            {"slot": i, "name": "", "resource_key": "", "version": "", "resource_type": ""}
+            for i in range(8)
+        ],
+        "updated_at": "",
+    }
+
+
+def load_phone_keys() -> dict:
+    """读取手机端按键绑定；文件不存在或损坏返回默认 8 空位"""
+    if not PHONE_KEYS_PATH.exists():
+        return _default_phone_keys()
+    try:
+        return _read_json(PHONE_KEYS_PATH)
+    except Exception as e:
+        logger.warning(f"phone_keys.json 损坏，返回默认: {e}")
+        return _default_phone_keys()
+
+
+def save_phone_keys(data: dict) -> dict:
+    """保存手机端按键绑定（补全 8 位 + 字段 + 时间戳）"""
+    raw_keys = data.get("keys", [])
+    keys = []
+    for i in range(8):
+        k = raw_keys[i] if i < len(raw_keys) else {}
+        keys.append({
+            "slot": i,
+            "name": k.get("name", ""),
+            "resource_key": k.get("resource_key", ""),
+            "version": k.get("version", ""),
+            "resource_type": k.get("resource_type", ""),
+        })
+    out = {"keys": keys, "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    _write_json(PHONE_KEYS_PATH, out)
+    bound = sum(1 for k in keys if k["resource_key"])
+    logger.info(f"📱 手机按键已保存 ({bound}/8 已绑定)")
+    return out

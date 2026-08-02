@@ -17,10 +17,11 @@ from typing import Any
 
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data, QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 from aimdk_msgs.srv import (
     PlayTts, SetMcPresetMotion, GetMcAction, SetMcAction,
-    GetSystemState, PlayEmoji, PlayAudioFile, PlayVideo,
+    GetSystemState, MigrateSystemState, PlayEmoji, PlayAudioFile, PlayVideo,
     SetVolume, GetVolume, SetMute, GetMute, SetMcInputSource,
     GetRobotResources, ExecuteActionResource,
 )
@@ -83,21 +84,27 @@ class X2Node(Node):
         super().__init__("gg_robot")
 
         # ── Service 客户端 ──
-        self.tts_client = self.create_client(PlayTts, "/aimdk_5Fmsgs/srv/PlayTts")
-        self.motion_client = self.create_client(SetMcPresetMotion, "/aimdk_5Fmsgs/srv/SetMcPresetMotion")
-        self.action_client = self.create_client(GetMcAction, "/aimdk_5Fmsgs/srv/GetMcAction")
-        self.mode_client = self.create_client(SetMcAction, "/aimdk_5Fmsgs/srv/SetMcAction")
-        self.sys_client = self.create_client(GetSystemState, "/aimdk_5Fmsgs/srv/GetSystemState")
-        self.emoji_client = self.create_client(PlayEmoji, "/aimdk_5Fmsgs/srv/PlayEmoji")
-        self.audio_client = self.create_client(PlayAudioFile, "/aimdk_5Fmsgs/srv/PlayAudioFile")
-        self.video_client = self.create_client(PlayVideo, "/face_ui_proxy/play_video")
-        self.input_source_client = self.create_client(SetMcInputSource, "/aimdk_5Fmsgs/srv/SetMcInputSource")
-        self.vol_get = self.create_client(GetVolume, "/aimdk_5Fmsgs/srv/GetVolume")
-        self.vol_set = self.create_client(SetVolume, "/aimdk_5Fmsgs/srv/SetVolume")
-        self.mute_get = self.create_client(GetMute, "/aimdk_5Fmsgs/srv/GetMute")
-        self.mute_set = self.create_client(SetMute, "/aimdk_5Fmsgs/srv/SetMute")
-        self.get_resources_client = self.create_client(GetRobotResources, "/aimdk_5Fmsgs/srv/GetRobotResources")
-        self.play_resource_client = self.create_client(ExecuteActionResource, "/aimdk_5Fmsgs/srv/ExecuteActionResource")
+        # 独立 ReentrantCallbackGroup：service response 回调走单独线程，避免和高频传感器回调
+        # (IMU 500Hz / arm 450Hz / vel timer 50Hz，都在 default MutuallyExclusive group 的同一个线程)
+        # 抢占导致 response 饿死、call_async 的 future 永不 done、retry 全超时。
+        g = ReentrantCallbackGroup()
+        self._srv_group = g
+        self.tts_client = self.create_client(PlayTts, "/aimdk_5Fmsgs/srv/PlayTts", callback_group=g)
+        self.motion_client = self.create_client(SetMcPresetMotion, "/aimdk_5Fmsgs/srv/SetMcPresetMotion", callback_group=g)
+        self.action_client = self.create_client(GetMcAction, "/aimdk_5Fmsgs/srv/GetMcAction", callback_group=g)
+        self.mode_client = self.create_client(SetMcAction, "/aimdk_5Fmsgs/srv/SetMcAction", callback_group=g)
+        self.sys_client = self.create_client(GetSystemState, "/aimdk_5Fmsgs/srv/GetSystemState", callback_group=g)
+        self.migrate_client = self.create_client(MigrateSystemState, "/aimdk_5Fmsgs/srv/MigrateSystemState", callback_group=g)
+        self.emoji_client = self.create_client(PlayEmoji, "/aimdk_5Fmsgs/srv/PlayEmoji", callback_group=g)
+        self.audio_client = self.create_client(PlayAudioFile, "/aimdk_5Fmsgs/srv/PlayAudioFile", callback_group=g)
+        self.video_client = self.create_client(PlayVideo, "/face_ui_proxy/play_video", callback_group=g)
+        self.input_source_client = self.create_client(SetMcInputSource, "/aimdk_5Fmsgs/srv/SetMcInputSource", callback_group=g)
+        self.vol_get = self.create_client(GetVolume, "/aimdk_5Fmsgs/srv/GetVolume", callback_group=g)
+        self.vol_set = self.create_client(SetVolume, "/aimdk_5Fmsgs/srv/SetVolume", callback_group=g)
+        self.mute_get = self.create_client(GetMute, "/aimdk_5Fmsgs/srv/GetMute", callback_group=g)
+        self.mute_set = self.create_client(SetMute, "/aimdk_5Fmsgs/srv/SetMute", callback_group=g)
+        self.get_resources_client = self.create_client(GetRobotResources, "/aimdk_5Fmsgs/srv/GetRobotResources", callback_group=g)
+        self.play_resource_client = self.create_client(ExecuteActionResource, "/aimdk_5Fmsgs/srv/ExecuteActionResource", callback_group=g)
 
         # ── 速度发布 ──
         self.vel_publisher = self.create_publisher(McLocomotionVelocity, "/aima/mc/locomotion/velocity", 10)
@@ -154,6 +161,7 @@ class X2Node(Node):
         }
         self._active_camera: str = ""
         self._cam_sub = None
+        self._pending_camera: str | None = None  # cmd 线程设、rclpy 线程消费（避免 cmd 线程 create_subscription 竞态）
         self._cam_qos_map = {
             "reliable": QoSProfile(
                 reliability=ReliabilityPolicy.RELIABLE,
@@ -183,18 +191,33 @@ class X2Node(Node):
         # ── 速度控制状态 ──
         self._input_registered = False
         self._vel_target = (0.0, 0.0, 0.0)
+
+        # ── 自由任务节点执行状态 ──
+        self._node_running_id: str = ""   # 当前正在执行的自由节点 id（空=空闲）
+        self._node_stop_flag: bool = False
         # 常驻 50Hz 速度发布定时器：在 __init__（rclpy 线程）创建一次，永不 create/destroy。
         # 否则 cmd 线程在 _do_velocity 里频繁 create/destroy timer 会与 executor 竞态，
         # 导致 executor.spin() 卡死、传感器回调停（ros2 topic hz 显示 publisher 正常，
         # 但 gg_robot 收不到更新，前端表现为数据冻结）。timer 由 executor 调度，
         # _do_velocity 只读写 _vel_target（tuple 整体替换，GIL 原子）。
         self._vel_timer = self.create_timer(0.02, self._publish_velocity)
+        # 相机切换在 rclpy 线程执行：cmd 线程 destroy/create subscription 会与 executor.spin() 竞态，
+        # 导致新订阅未注册进 executor、_on_camera 永不调度（所有相机收不到帧，同 velocity timer 的坑）
+        self._cam_switch_timer = self.create_timer(0.1, self._process_camera_switch)
 
         self._wait_services()
         logger.info("✅ X2Node 就绪")
 
-    def _wait_services(self, timeout: float = 30.0):
-        """等待所有 Service 就绪，超时则抛出 RuntimeError"""
+    def _wait_services(self, timeout: float = 10.0):
+        """等待所有 Service 就绪（容错，不阻塞启动）。
+
+        ⚠️ 开发者模式下部分原生服务会被停用、从 DDS 消失：
+          Develop_Audio_Linux/ROS 停 hal_audio → PlayAudioFile/PlayTts/音量/静音等消失
+          Develop_MC 停运控 → SetMcAction 等消失
+        这是预期行为，对缺失的 service 只告警、不抛异常。否则一旦切了开发者模式，
+        ggRobot 起不来、Web UI 用不了，会被锁死、无法切回 Ready。
+        timeout 控制在 10s 内（< __main__.wait_for_queue 的 15s），正常态下服务几乎立即可用。
+        """
         clients = [
             ("PlayTts", self.tts_client), ("SetMcPresetMotion", self.motion_client),
             ("GetMcAction", self.action_client), ("SetMcAction", self.mode_client),
@@ -204,14 +227,18 @@ class X2Node(Node):
             ("GetMute", self.mute_get), ("SetMute", self.mute_set),
             ("SetMcInputSource", self.input_source_client),
         ]
-        t0 = time.time()
-        for name, client in clients:
-            logger.info(f"⏳ 等待 {name} 服务...")
-            while not client.wait_for_service(timeout_sec=2.0):
-                if time.time() - t0 > timeout:
-                    missing = [n for n, c in clients if not c.wait_for_service(timeout_sec=0.1)]
-                    raise RuntimeError(f"Service 等待超时，未就绪: {missing}")
-                pass
+        deadline = time.time() + timeout
+        pending = dict(clients)
+        while pending and time.time() < deadline:
+            for name in list(pending):
+                if pending[name].wait_for_service(timeout_sec=0.3):
+                    del pending[name]
+        ready = len(clients) - len(pending)
+        logger.info(f"⏳ 服务就绪 {ready}/{len(clients)}" + ("，其余等待超时放弃" if pending else ""))
+        for name in pending:
+            logger.warning(f"⚠ 服务未就绪（开发者模式下可能正常）: {name}")
+        if pending:
+            logger.warning(f"⚠ {len(pending)} 个服务未就绪，对应功能不可用；可在控制页查看/切换系统态")
 
     # ── 传感器回调 ──
     def _on_battery(self, msg):
@@ -351,14 +378,32 @@ class X2Node(Node):
         return result
 
     def switch_camera(self, camera_id: str) -> dict:
-        """切换到指定相机"""
+        """切换到指定相机（cmd 线程入口）：只登记目标，真正的 destroy/create 在 rclpy 线程做。
+
+        ⚠️ destroy_subscription/create_subscription 不能在 cmd 线程做 —— 会与 executor.spin() 竞态，
+        导致新订阅没注册进 executor、_on_camera 永不调度（所有相机收不到帧）。
+        同 velocity timer 的坑（已改常驻）。这里只设 _pending_camera 标志，
+        由 _cam_switch_timer 在 rclpy 线程消费。
+        """
         if camera_id not in self._camera_topics:
             return {"ok": False, "error": f"未知相机: {camera_id}"}
-
+        self._camera_topics[camera_id]["active"] = True
+        self._pending_camera = camera_id
         cfg = self._camera_topics[camera_id]
-        cfg["active"] = True
-        # 不预检 topic 是否已被 DDS 发现：create_subscription 直接订阅，
-        # DDS 会自动匹配 publisher（跨板 discovery 延迟也能后续收到）
+        return {"ok": True, "camera": cfg["label"], "topic": cfg["topic"]}
+
+    def _process_camera_switch(self):
+        """rclpy 线程（timer 回调）：执行待处理的相机切换。
+
+        create/destroy subscription 在此线程做，与 executor 实体管理一致，避免竞态。
+        """
+        cam_id = self._pending_camera
+        if cam_id is None:
+            return
+        self._pending_camera = None
+        if cam_id not in self._camera_topics:
+            return
+        cfg = self._camera_topics[cam_id]
 
         # 销毁旧订阅
         if self._cam_sub is not None:
@@ -373,23 +418,18 @@ class X2Node(Node):
             self._camera_first_ts = 0.0
             self._camera_last_ts = 0.0
 
-        # 用内置 qos_profile_sensor_data（完整 DDS profile）。ros2 topic echo 即用此类 QoS，
-        # 实测能匹配 RELIABLE+VOLATILE publisher 稳定收到 30Hz JPEG（publisher 在线、echo 可收、
-        # 仅 gg_robot 收不到 → 排除驱动/网络/QoS 兼容性）。
-        # ⚠️ 之前手搓 QoSProfile(reliability=RELIABLE, durability=VOLATILE, history=KEEP_LAST, depth=1)
-        # 字段不全（lifespan/deadline/liveliness 未设），DDS 协商失败、Subscription count=0、收不到帧。
-        # 更早用 qos_profile_sensor_data "收不到" 的真正原因是 executor 卡死（_on_camera 不调度），
-        # 非 QoS —— 现已修（常驻 timer 消除 cmd 线程 timer 竞态）。
+        # qos_profile_sensor_data（= SensorDataQoS: BEST_EFFORT+VOLATILE），与官方 echo_camera_rgbd 一致，
+        # 能匹配 RELIABLE publisher。之前"收不到"的根因是 cmd 线程竞态（见上），非 QoS。
         qos = qos_profile_sensor_data
         self._cam_sub = self.create_subscription(
-            CompressedImage,
-            cfg["topic"],
-            self._on_camera,
-            qos,
+            CompressedImage, cfg["topic"], self._on_camera, qos,
         )
-        self._active_camera = camera_id
-        logger.info(f"📷 切换相机: {cfg['label']} ({cfg['topic']}) qos=qos_profile_sensor_data")
-        return {"ok": True, "camera": cfg["label"], "topic": cfg["topic"]}
+        self._active_camera = cam_id
+        pub_count = self.count_publishers(cfg["topic"])
+        logger.info(
+            f"📷 切换相机[rclpy线程]: {cfg['label']} ({cfg['topic']}) | "
+            f"publisher={pub_count}（0=驱动未发布/discovery 未完成，>0=有发布者）"
+        )
 
     def get_active_camera(self) -> str:
         """返回当前活跃相机 ID"""
@@ -428,13 +468,16 @@ class X2Node(Node):
             cam_wait_start = getattr(self, '_cam_wait_start', 0.0)
             if cam_wait_start == 0.0:
                 self._cam_wait_start = now
-            elif now - cam_wait_start > 60.0:
-                # 60s 还没帧，打印提示但不切换（DDS 没发现 publisher 的话切换也没用）
+            elif now - cam_wait_start > 15.0:
+                # 15s 还没帧：探测 publisher，区分「驱动没起」vs「有发布者但 DDS/QoS 没匹配」
+                topic = self._camera_topics[self._active_camera]["topic"]
+                pub_count = self.count_publishers(topic)
                 logger.warning(
-                    f"📷 {self._active_camera} 已等待 {now - cam_wait_start:.0f}s 仍未收到帧，"
-                    f"继续等待 DDS 发现...（可用 ros2 topic info 确认 publisher 是否在线）"
+                    f"📷 {self._active_camera} 已等待 {now - cam_wait_start:.0f}s 仍未收到帧 | "
+                    f"topic={topic} publisher={pub_count}"
+                    f"（0=驱动未发布该 topic；>0=有发布者但 DDS 未匹配/QoS 不兼容）"
                 )
-                self._cam_wait_start = now  # 重置，下次60s后再提醒
+                self._cam_wait_start = now  # 重置，下次再提醒
         elif self._active_camera and self._camera_last_ts > 0.0:
             self._cam_wait_start = 0.0  # 有帧则重置
 
@@ -457,6 +500,7 @@ class X2Node(Node):
             "velocity": self._do_velocity,
             "status": self._get_status,
             "system": self._do_system,
+            "migrate_system_state": self._do_migrate_system_state,
             "mode": self._do_mode,
             "emoji": self._do_emoji,
             "media_play": self._do_media_play,
@@ -472,6 +516,7 @@ class X2Node(Node):
             "resources": self._get_resources,
             "play_resource": self._play_resource,
             "run_task": self._do_run_task,
+            "run_node": self._do_run_node,
         }
         handler = action_map.get(cmd.action)
         if handler is None:
@@ -501,7 +546,14 @@ class X2Node(Node):
         return False
 
     # ── 预设动作 ──
-    def _do_motion(self, area: int, motion_id: int) -> dict:
+    def _do_motion(self, area: int, motion_id: int, interrupt: bool = True) -> dict:
+        """预设动作 SetMcPresetMotion（文档 5.1.4）。
+
+        interrupt=True（默认，文档最佳实践）：打断当前正在执行的动作，新动作立即生效——
+        连续触发时后者能执行，避免被前一个未完成的动作拒绝（"概率不执行"问题）。
+        ⚠️ 所有预设动作必须在 STAND_DEFAULT（稳定站立）模式下执行；area 无 0，
+        只有文档 tbl-preset-motion 列出的 (motion,area) 组合有效（见 web/src/config/motions.ts）。
+        """
         from .retry import call_with_retry
         from aimdk_msgs.msg import McPresetMotion, McControlArea
 
@@ -510,7 +562,7 @@ class X2Node(Node):
             req.header.stamp = self.get_clock().now().to_msg()
             req.motion = McPresetMotion(); req.motion.value = motion_id
             req.area = McControlArea(); req.area.value = area
-            req.interrupt = False
+            req.interrupt = interrupt
             return req
         resp = call_with_retry(self, self.motion_client, build, "SetMcPresetMotion")
         if resp is None:
@@ -528,6 +580,17 @@ class X2Node(Node):
         from .retry import call_with_retry
         from aimdk_msgs.msg import McInputSource, McInputAction
 
+        # 先注销可能残留的 web_ui（gg_robot 重启后机器人侧可能仍有旧注册，
+        # 直接 1001 注册会 code=1 失败）。照 navigation/avoidance.py 先删后注模式。
+        def build_unregister():
+            req = SetMcInputSource.Request()
+            req.request.header.stamp = self.get_clock().now().to_msg()
+            req.action = McInputAction(); req.action.value = 1003
+            req.input_source = McInputSource(); req.input_source.name = "web_ui"
+            return req
+        call_with_retry(self, self.input_source_client, build_unregister, "SetMcInputSource(unregister)")
+        self._sleep(0.3)
+
         def build():
             req = SetMcInputSource.Request()
             req.request.header.stamp = self.get_clock().now().to_msg()
@@ -541,6 +604,8 @@ class X2Node(Node):
         if resp and resp.response.header.code == 0:
             self._input_registered = True
             logger.info("🕹️ web_ui 已注册运动控制输入源")
+        else:
+            logger.warning(f"🕹️ web_ui 输入源注册失败: resp={resp}")
 
     def _publish_velocity(self):
         # 未注册输入源前不发布（避免无意义流量）；注册后持续 50Hz 发，全零=停车。
@@ -557,6 +622,8 @@ class X2Node(Node):
         self.vel_publisher.publish(msg)
 
     def _do_velocity(self, forward: float, lateral: float, angular: float):
+        if not self._input_registered:
+            logger.info(f"🕹️ 收到首次 velocity: f={forward} l={lateral} a={angular}")
         self._register_input_source()
         # 只更新目标速度（tuple 原子替换）。timer 常驻，不在此 create/destroy，
         # 避免 cmd 线程操作 rclpy 实体触发 executor 竞态卡死 spin。
@@ -565,30 +632,111 @@ class X2Node(Node):
 
     # ── 系统状态 ──
     def _do_system(self) -> dict:
+        """查询运动模式(GetMcAction) + 系统态(GetSystemState)。
+
+        两路独立 try + 防御性解析：任一路失败/字段缺失不影响另一路，也避免异常上抛
+        导致整个 /api/system 500（前端表现为状态"未知"）。
+        """
         from .retry import call_with_retry
 
-        def build_action():
-            req = GetMcAction.Request()
-            req.request.header.stamp = self.get_clock().now().to_msg()
-            return req
-        action_resp = call_with_retry(self, self.action_client, build_action, "GetMcAction")
+        # 运动模式（GetMcAction）—— CommonRequest request → req.request.header.stamp
+        action_info = None
+        try:
+            def build_action():
+                req = GetMcAction.Request()
+                req.request.header.stamp = self.get_clock().now().to_msg()
+                return req
+            r = call_with_retry(self, self.action_client, build_action, "GetMcAction")
+            if r is not None:
+                info = getattr(r, "info", None)
+                st = getattr(info, "status", None) if info else None
+                action_info = {
+                    "desc": getattr(info, "action_desc", "未知") if info else "未知",
+                    "status": st.value if st is not None else -1,
+                }
+        except Exception as e:
+            logger.warning(f"GetMcAction 查询/解析异常: {e}")
 
+        # 系统态（GetSystemState）—— CommonRequest header → req.header.header.stamp
+        system_info = None
+        try:
+            def build_sys():
+                req = GetSystemState.Request()
+                req.header.header.stamp = self.get_clock().now().to_msg()
+                return req
+            r = call_with_retry(self, self.sys_client, build_sys, "GetSystemState")
+            if r is not None:
+                cs = getattr(r, "curr_status", None)
+                system_info = {
+                    "state": getattr(r, "cur_state", "") or "",
+                    "status": cs.value if cs is not None else -1,
+                }
+                logger.info(f"📊 系统态: state={system_info['state']} status={system_info['status']}")
+            else:
+                logger.warning("GetSystemState 无响应（重试失败），系统态未知")
+        except Exception as e:
+            logger.warning(f"GetSystemState 查询/解析异常: {e}")
+
+        return {"action": action_info, "system": system_info}
+
+    # ── 开发者模式 / 系统状态迁移 ──
+    def _do_migrate_system_state(self, state: str) -> dict:
+        """切换系统状态/开发者模式（MigrateSystemState），发起后轮询 GetSystemState 阻塞到迁移完成。
+
+        ⚠️ Develop_MC 会停用原生运动控制（直接给 ethercat 发数据做全身控制），
+        机器人将失去站立/行走保护，可能摔倒 —— 仅在安全场地、明确知情下使用。
+        完成开发后务必切回 Ready 或整机重启（文档 5.6.4 安全注意事项）。
+        """
+        from .retry import call_with_retry
+
+        if not self.migrate_client.wait_for_service(timeout_sec=1.0):
+            return {"ok": False, "message": "MigrateSystemState 服务不可用"}
+
+        def build_migrate():
+            req = MigrateSystemState.Request()
+            req.header.header.stamp = self.get_clock().now().to_msg()  # CommonRequest header → 两层
+            req.state = state
+            return req
+        resp = call_with_retry(self, self.migrate_client, build_migrate, "MigrateSystemState")
+        if resp is None:
+            return {"ok": False, "message": "MigrateSystemState 服务超时"}
+        code = resp.header.header.code  # CommonResponse header → 两层
+        if code != 0:
+            return {"ok": False, "code": code, "message": resp.header.message or "迁移请求被拒绝"}
+
+        # 迁移需数秒（状态机 IN_READY→IN_MOVE→IN_READY）。轮询 GetSystemState 确认完成。
+        # ⚠️ 不能用 cur_state == 目标值 判定：切回 Ready 时实测 cur_state 变为业务态 "Business"
+        # （非 "Ready"），只有 Develop_* 态才与目标同名。故改用「status==IN_READY(1) 且 cur_state
+        # 已离开迁移前状态」判定，并返回真实 cur_state。复用 _do_system 的 build_sys。
         def build_sys():
             req = GetSystemState.Request()
             req.header.header.stamp = self.get_clock().now().to_msg()
             return req
-        sys_resp = call_with_retry(self, self.sys_client, build_sys, "GetSystemState")
-
-        return {
-            "action": {
-                "desc": action_resp.info.action_desc if action_resp else "未知",
-                "status": action_resp.info.status.value if action_resp else -1,
-            } if action_resp else None,
-            "system": {
-                "state": sys_resp.cur_state if sys_resp else "未知",
-                "status": sys_resp.curr_status.value if sys_resp else -1,
-            } if sys_resp else None,
-        }
+        before = call_with_retry(self, self.sys_client, build_sys, "GetSystemState(before)", timeout=1.0, retries=1)
+        before_state = before.cur_state if before else ""
+        # 停用系统节点（如 hal_audio）的迁移跨板、较慢，给足窗口。
+        deadline = time.monotonic() + 20.0
+        cur_state, cur_status = before_state, -1
+        saw_move = False
+        while time.monotonic() < deadline:
+            self._sleep(0.5)
+            sys_resp = call_with_retry(self, self.sys_client, build_sys, "GetSystemState(poll)", timeout=1.0, retries=1)
+            if sys_resp:
+                cur_state = sys_resp.cur_state
+                cur_status = sys_resp.curr_status.value
+                if cur_status == 2:  # IN_MOVE：迁移进行中
+                    saw_move = True
+                if cur_status == 1 and cur_state.lower() != before_state.lower():  # 离开迁移前态且就绪
+                    logger.info(f"🔄 开发者模式迁移完成: {before_state} → {cur_state}")
+                    return {"ok": True, "code": code, "state": cur_state, "status": cur_status}
+        # 超时：若观察到进入迁移态（status 曾==2 或当前==2），迁移已发起只是没在窗口内完成 —— 不算失败
+        if saw_move or cur_status == 2:
+            logger.info(f"🔄 迁移仍在进行中(超时窗口内未完成): target={state} {before_state}→{cur_state} status={cur_status}")
+            return {"ok": True, "in_progress": True, "code": code, "state": cur_state, "status": cur_status,
+                    "message": "迁移已发起，仍在进行中，请稍后刷新查看"}
+        logger.warning(f"🔄 迁移未生效: target={state} {before_state}→{cur_state} status={cur_status}")
+        return {"ok": False, "code": code, "state": cur_state, "status": cur_status,
+                "message": f"迁移未生效（当前 {cur_state}）"}
 
     # ── 表情 ──
     def _do_emoji(self, emotion_id: int, mode: int = 1) -> dict:
@@ -632,14 +780,13 @@ class X2Node(Node):
         return {"is_mute": resp.is_mute if resp else is_mute}
 
     # ── 模式切换 ──
-    def _do_mode(self, action_desc: str) -> dict:
-        """切换运动模式（v0.8.2+ 用 action_desc 字符串，非数字ID）
-
-        合法值：PASSIVE_DEFAULT(零力矩/急停) / DAMPING_DEFAULT(阻尼) /
-        JOINT_DEFAULT(位控站立) / STAND_DEFAULT(稳定站立) / LOCOMOTION_DEFAULT(走跑)
-        """
+    def _do_mode(self, action_desc: str = "", action_value: int = 0) -> dict:
+        """切换运动模式。action_value（数字 ID）优先且最可靠；
+        action_desc 字符串只对示例列的 5 种（PASSIVE/DAMPING/JOINT/STAND/LOCOMOTION）有效，
+        STAND_BODY_CONTROL/SIT_DOWN/ZERO_TORQUE 等后端不认字符串，必须靠 action_value。
+        value 见 api_reference McAction.value 表（201=STAND_BODY_CONTROL）。"""
         from .retry import call_with_retry
-        from aimdk_msgs.msg import McActionCommand
+        from aimdk_msgs.msg import McActionCommand, McAction
 
         def build():
             req = SetMcAction.Request()
@@ -647,10 +794,15 @@ class X2Node(Node):
             req.source = "web_ui"
             req.command = McActionCommand()
             req.command.action_desc = action_desc
+            if action_value:
+                req.command.action = McAction()
+                req.command.action.value = action_value
             return req
         resp = call_with_retry(self, self.mode_client, build, "SetMcAction")
-        ok = resp is not None and resp.response.header.code == 0
-        return {"ok": ok}
+        if resp is None:
+            return {"ok": False, "message": "service timeout"}
+        code = resp.response.header.code
+        return {"ok": code == 0, "code": code, "message": resp.response.message}
 
     # ── 音视频播放 ──
     def _do_media_play(self, file_path: str, file_name: str) -> dict:
@@ -751,7 +903,17 @@ class X2Node(Node):
         if not self.play_resource_client.wait_for_service(timeout_sec=1.0):
             return {"ok": False, "error": "ExecuteActionResource 服务不可用"}
 
-        rtype = resource_type or ("BODY_MOTION" if "onnx" in resource_key else "ARM_MOTION")
+        # ⚠️ aimdk 官方 resource_type 拼写就是 MONTION（少个字母，SDK 示例与文档 5.1.5 均如此），
+        # 非 MOTION —— 用错拼写会导致 ExecuteActionResource 执行失败。
+        # 前端可能传 BODY/ARM 简写或 BODY_MONTION/ARM_MONTION，统一规范化；空则按 resource_key 含 onnx 判
+        rt = (resource_type or "").upper()
+        if "BODY" in rt:
+            rtype = "BODY_MONTION"
+        elif "ARM" in rt:
+            rtype = "ARM_MONTION"
+        else:
+            rtype = "BODY_MONTION" if "onnx" in resource_key else "ARM_MONTION"
+        logger.info(f"▶ 播放灵创: {resource_key} → {rtype}")
 
         def build():
             req = ExecuteActionResource.Request()
@@ -794,6 +956,21 @@ class X2Node(Node):
         """在 rclpy 线程中执行编排任务"""
         engine.run(self, task)
         return engine.get_status()
+
+    def _do_run_node(self, step: dict) -> dict:
+        """执行单个自由任务节点（cmd 线程，复用 steps.execute_step）。
+        手动单点触发，不走 engine（无状态机/无顺序/无前后依赖）。"""
+        from .task.steps import execute_step
+        self._node_stop_flag = False
+        self._node_running_id = step.get("id", "")
+        try:
+            execute_step(self, step, {"responses": {}})
+            return {"ok": True, "node_id": step.get("id", "")}
+        except Exception as e:
+            logger.error(f"❌ 自由节点执行失败 [{step.get('type')}]: {e}")
+            return {"ok": False, "error": str(e), "node_id": step.get("id", "")}
+        finally:
+            self._node_running_id = ""
 
 
 # ── 模块级引用（供 routes 直接使用）──
