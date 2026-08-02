@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data, QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from rclpy.qos import qos_profile_sensor_data
 from rclpy.callback_groups import ReentrantCallbackGroup
 
 from aimdk_msgs.srv import (
@@ -27,6 +27,8 @@ from aimdk_msgs.srv import (
 )
 from aimdk_msgs.msg import McLocomotionVelocity, PmuState, MessageHeader, PlayStateChange, JointStateArray
 from sensor_msgs.msg import Imu, CompressedImage
+
+from .config import VEL_SOURCE_NAME, VEL_PUBLISH_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -162,20 +164,6 @@ class X2Node(Node):
         self._active_camera: str = ""
         self._cam_sub = None
         self._pending_camera: str | None = None  # cmd 线程设、rclpy 线程消费（避免 cmd 线程 create_subscription 竞态）
-        self._cam_qos_map = {
-            "reliable": QoSProfile(
-                reliability=ReliabilityPolicy.RELIABLE,
-                durability=DurabilityPolicy.VOLATILE,
-                history=HistoryPolicy.KEEP_LAST,
-                depth=1,
-            ),
-            "transient_local": QoSProfile(
-                reliability=ReliabilityPolicy.RELIABLE,
-                durability=DurabilityPolicy.TRANSIENT_LOCAL,
-                history=HistoryPolicy.KEEP_LAST,
-                depth=1,
-            ),
-        }
 
         # ── 订阅传感器 ──
         self.create_subscription(PmuState, "/aima/hal/pmu/state", self._on_battery, qos_profile_sensor_data)
@@ -200,7 +188,7 @@ class X2Node(Node):
         # 导致 executor.spin() 卡死、传感器回调停（ros2 topic hz 显示 publisher 正常，
         # 但 gg_robot 收不到更新，前端表现为数据冻结）。timer 由 executor 调度，
         # _do_velocity 只读写 _vel_target（tuple 整体替换，GIL 原子）。
-        self._vel_timer = self.create_timer(0.02, self._publish_velocity)
+        self._vel_timer = self.create_timer(1.0 / max(VEL_PUBLISH_RATE, 1), self._publish_velocity)
         # 相机切换在 rclpy 线程执行：cmd 线程 destroy/create subscription 会与 executor.spin() 竞态，
         # 导致新订阅未注册进 executor、_on_camera 永不调度（所有相机收不到帧，同 velocity timer 的坑）
         self._cam_switch_timer = self.create_timer(0.1, self._process_camera_switch)
@@ -445,18 +433,6 @@ class X2Node(Node):
             cfg = self._camera_topics[self._active_camera]
             logger.info(f"📷 自动选择相机: {cfg['label']}")
 
-    def _try_select_camera_once(self) -> bool:
-        """单次尝试选相机（非阻塞）：DDS 发现 topic 就订阅第一个可用相机"""
-        if self._active_camera:
-            return True
-        topic_names = {t for t, _ in self.get_topic_names_and_types()}
-        for cam_id, cfg in self._camera_topics.items():
-            if cfg["topic"] in topic_names:
-                self.switch_camera(cam_id)
-                logger.info(f"📷 后台自动订阅相机: {cfg['label']}")
-                return True
-        return False
-
     # ── 命令处理 ──
     def process_commands(self):
         """处理命令队列中的待执行命令（由 rclpy 线程调用）"""
@@ -586,7 +562,7 @@ class X2Node(Node):
             req = SetMcInputSource.Request()
             req.request.header.stamp = self.get_clock().now().to_msg()
             req.action = McInputAction(); req.action.value = 1003
-            req.input_source = McInputSource(); req.input_source.name = "web_ui"
+            req.input_source = McInputSource(); req.input_source.name = VEL_SOURCE_NAME
             return req
         call_with_retry(self, self.input_source_client, build_unregister, "SetMcInputSource(unregister)")
         self._sleep(0.3)
@@ -596,16 +572,16 @@ class X2Node(Node):
             req.request.header.stamp = self.get_clock().now().to_msg()
             req.action = McInputAction(); req.action.value = 1001
             req.input_source = McInputSource()
-            req.input_source.name = "web_ui"
+            req.input_source.name = VEL_SOURCE_NAME
             req.input_source.priority = 40
             req.input_source.timeout = 1000
             return req
         resp = call_with_retry(self, self.input_source_client, build, "SetMcInputSource")
         if resp and resp.response.header.code == 0:
             self._input_registered = True
-            logger.info("🕹️ web_ui 已注册运动控制输入源")
+            logger.info(f"🕹️ {VEL_SOURCE_NAME} 已注册运动控制输入源")
         else:
-            logger.warning(f"🕹️ web_ui 输入源注册失败: resp={resp}")
+            logger.warning(f"🕹️ {VEL_SOURCE_NAME} 输入源注册失败: resp={resp}")
 
     def _publish_velocity(self):
         # 未注册输入源前不发布（避免无意义流量）；注册后持续 50Hz 发，全零=停车。
@@ -615,7 +591,7 @@ class X2Node(Node):
         msg = McLocomotionVelocity()
         msg.header = MessageHeader()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.source = "web_ui"
+        msg.source = VEL_SOURCE_NAME
         msg.forward_velocity = float(fwd)
         msg.lateral_velocity = float(lat)
         msg.angular_velocity = float(ang)

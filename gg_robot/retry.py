@@ -1,4 +1,4 @@
-"""跨板 Service 调用 8 次重试封装
+"""跨板 Service 调用重试封装（默认 3 次 × 3.0s）
 
 依赖后台 executor 线程持续 spin 来完成 service future（见 __main__.py 的
 executor.spin()）。本函数只做 future.done() 超时轮询，不再重入

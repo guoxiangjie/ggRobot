@@ -145,8 +145,4 @@ export interface RobotStatus {
     touched: boolean
     event: number
   }
-  connection: {
-    rosbridge: boolean
-    fastapi: boolean
-  }
 }

@@ -21,16 +21,16 @@ ggRobot/
 ├── gg_robot/           ← Python 后端 (FastAPI + rclpy/ROS2)
 │   ├── __main__.py     ← 入口：启动rclpy守护线程 → 等待就绪 → 启动FastAPI
 │   ├── server.py       ← FastAPI 应用工厂（路由+CORS+静态文件+lifespan）
-│   ├── node.py         ← 核心ROS2节点：12个Service客户端+传感器订阅+命令队列
+│   ├── node.py         ← 核心ROS2节点：16个Service客户端+传感器订阅+命令队列
 │   ├── schemas.py      ← Pydantic 请求/响应模型
-│   ├── retry.py        ← 跨板Service调用8次重试封装
+│   ├── retry.py        ← 跨板Service调用重试封装（3次×3.0s，可按接口调）
 │   ├── routes/         ← REST API 路由（tts/motion/velocity/system/emoji/media/volume/mic/sequence）
 │   └── ws/stream.py    ← WebSocket端点 + 传感器推送 + 相机帧推送 + 键盘遥控
 ├── web/                ← Vue3 PWA 前端源码
 │   └── src/
 │       ├── api/        ← HTTP+WebSocket客户端封装
 │       ├── stores/     ← Pinia状态（connection + robot）
-│       ├── views/      ← 8个页面（Dashboard/Camera/Control/Emoji/Media/Model3D/System/Voice/Task）
+│       ├── views/      ← 12个页面（Dashboard/Control/Task/Project/Camera/Model3D/Media/Emoji/Linkcraft/System/Phone）
 │       ├── components/ ← UI组件（BatteryCard/ImuCard/JointCard/MotionPanel/TtsPanel/VolumePanel/x2model）
 │       └── types/      ← AimDK消息类型定义
 ├── static/             ← 前端构建产物（FastAPI直接托管）
@@ -60,7 +60,7 @@ ggRobot/
 
 ### 跨板重试
 
-所有跨计算单元的 Service 调用走 `retry.call_with_retry()`：**8次重试，每次timeout 0.25s**。
+所有跨计算单元的 Service 调用走 `retry.call_with_retry()`：**默认 3 次重试，每次 timeout 3.0s**（PlayAudioFile 等特殊接口单次 5s/不重试，避免重复播放）。
 
 ### 双通道数据推送
 
@@ -127,9 +127,9 @@ make all      # web + deploy一键
 1. **PC1永远不碰** — 10.0.1.40是运控大脑
 2. **速度控制前必须注册输入源** — 名称"web_ui"，优先级40，超时1000ms
 3. **速度必须持续50Hz发送** — 单条指令无效，松开需发全零
-4. **TTS/Service跨板调用不稳定** — 统一8次重试/0.25s超时
-5. **QoS不匹配是传感器无数据的第一大原因** — v0.9.0细化：RGBD用RELIABLE、双目/后视/Lidar用TRANSIENT_LOCAL、camera_info须RELIABLE+TRANSIENT_LOCAL；控制指令用RELIABLE
+4. **TTS/Service跨板调用不稳定** — 统一 `retry.call_with_retry()`（3次×3.0s）
+5. **QoS不匹配是传感器无数据的第一大原因** — 实机统一用 `qos_profile_sensor_data`（BEST_EFFORT+VOLATILE）订阅传感器/相机（可匹配 RELIABLE publisher）；控制指令用 RELIABLE
 6. **音视频文件必须传到 PC3 的 `/agibot/data/home/agi/media/`** — face_ui 服务在 PC3 读 agi home 此目录，`/var/tmp` 它读不到（报文件不存在）；PC2→PC3 免密要配 PC2 的 `~/.ssh/config`（系统默认 webssh key 无效），见记忆 face-ui-pc3-media
 7. **time.sleep 卡死rclpy spin** — 用 spin_once 循环替代
 8. **Mac Python版本** — 用 Homebrew python@3.12，不要用 3.14（llvmlite不兼容）
-9. **SDK 版本说明** — 文档站 latest 指向 v0.9.0（部分页面已到 v1.0.0）。项目多处接口已过时待迁移：McAction 数字ID→action_desc字符串、area位掩码→1/2/3/11、相机 rgb_head_front_center v0.8.1已下线→改 rgbd_head_front、TTS 的 play_state 话题 v0.9.0文档不存在→用 estimated_duration、关节状态是 JointStateArray 非 sensor_msgs。**完整变更与迁移指南见 `docs/aimdk_v0.9.0_migration.md`，速查见记忆 aimdk-v090-sdk-notes**
+9. **SDK 版本说明** — 文档站 latest 指向 v0.9.0（部分页面已到 v1.0.0）。项目接口现状：McAction 支持 action_desc 字符串 + action_value 数字 ID（SIT_DOWN=2000/ZERO_TORQUE=4 必须用数字）、area 用 1/2/3/11、相机用 rgbd_head_front、TTS 以 estimated_duration 估时、关节状态是 JointStateArray 非 sensor_msgs。**速查见 docs/api_reference.md 与 docs/dev_guide.md**

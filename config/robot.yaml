@@ -14,6 +14,8 @@ server:
 # ── 传感器 QoS ──
 
 # ── 激光避障 ──
+# ⚠️ 本段尚未接线：navigation/avoidance.py 独立运行，实际生效参数
+#    硬编码在其 CFG 字典中（改这里不会生效）。
 navigation:
   source_name: "x2_navigation"
   roi_x_min: 0.2

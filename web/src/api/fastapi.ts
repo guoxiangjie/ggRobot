@@ -72,8 +72,9 @@ export async function playEmoji(emotionId: number, mode: number = 1) {
 }
 
 // ── 模式切换 ──
-export async function switchMode(mode: string) {
-  const { data } = await api.post(`/api/mode?mode=${mode}`)
+export async function switchMode(mode: string, value?: number) {
+  // value 为数字模式 ID（SIT_DOWN=2000 / ZERO_TORQUE=4 等），后端优先使用
+  const { data } = await api.post(`/api/mode?mode=${mode}${value != null ? `&value=${value}` : ''}`)
   return data as { ok: boolean }
 }
 
@@ -116,11 +117,6 @@ export async function getVolume() { const { data } = await api.get('/api/volume'
 export async function setVolume(volume: number) { const { data } = await api.post(`/api/volume?volume=${volume}`); return data as { volume: number } }
 export async function getMute() { const { data } = await api.get('/api/mute'); return data as { is_mute: boolean } }
 export async function setMute(is_mute: boolean) { const { data } = await api.post(`/api/mute?mute=${is_mute}`); return data as { is_mute: boolean } }
-
-// ── MIC ──
-export async function micToggle(enable: boolean) { const { data } = await api.post('/api/mic', { enable }); return data as { enabled: boolean } }
-export async function micStatus() { const { data } = await api.get('/api/mic'); return data as { enabled: boolean; info: Record<string, unknown>; has_segment: boolean; segment_size: number } }
-export async function getMicAudio() { const { data } = await api.get('/api/mic/audio'); return data as { ok: boolean; data: string; size: number } }
 
 // ── 动作序列 ──
 export async function runSequence() { const { data } = await api.post('/api/sequence'); return data as { ok: boolean } }
@@ -209,12 +205,6 @@ export async function getProjectStatus() {
 }
 export async function getCameras() { const { data } = await api.get('/api/cameras'); return data as { cameras: { id: string; label: string; topic: string; active: boolean; selected: boolean }[] } }
 export async function switchCamera(cameraId: string) { const { data } = await api.post('/api/camera/switch', { camera_id: cameraId }); return data as { ok: boolean; error?: string } }
-
-// ── 拍照 ──
-export async function takePhoto() {
-  const { data } = await api.post('/api/photo')
-  return data as { ok: boolean; path?: string }
-}
 
 // ── 脸屏 Logo ──
 export async function showLogo() { const { data } = await api.post('/api/logo/show'); return data as { ok: boolean; error?: string } }

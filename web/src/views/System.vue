@@ -11,6 +11,7 @@ interface SystemInfo {
 
 const info = ref<SystemInfo>({ action: null, system: null })
 const loading = ref(false)
+const locationHost = window.location.host
 
 function statusLabel(v: number): string {
   const map: Record<number, string> = { 0: 'IDLE', 100: 'RUNNING', 200: 'TRANSITION' }
@@ -79,16 +80,12 @@ onMounted(refresh)
         <div class="card-label">连接信息</div>
         <div class="conn-grid">
           <div class="conn-item">
-            <span class="conn-key">rosbridge</span>
-            <code>ws://10.0.1.41:9090</code>
+            <span class="conn-key">Web 控制台</span>
+            <code>{{ locationHost }}</code>
           </div>
           <div class="conn-item">
-            <span class="conn-key">FastAPI</span>
-            <code>http://10.0.1.41:8000</code>
-          </div>
-          <div class="conn-item">
-            <span class="conn-key">遥控 WS</span>
-            <code>ws://10.0.1.41:8000/ws/velocity</code>
+            <span class="conn-key">数据推送 WS</span>
+            <code>ws://{{ locationHost }}/ws</code>
           </div>
         </div>
       </div>

@@ -141,7 +141,7 @@ const STEP_DEFAULTS: Record<string, Record<string, unknown>> = {
   // 预设动作：motion+area 绑定（默认右手挥手 1002:2）
   motion: { motion_id: 1002, area: 2, delay: 1 },
   // 灵创动作：resource_key + version/type/name（从机器人资源拉取）
-  linkcraft: { resource_key: '', version: '', type: '', name: '', delay: 2 },
+  linkcraft: { resource_key: '', version: '', resource_type: '', name: '', delay: 2 },
 }
 
 function typeMeta(type: string) { return STEP_TYPES.find(s => s.type === type) || { label: type, icon: IconPlus, color: '#666' } }

@@ -40,19 +40,23 @@ watch(motorEnabled, (on) => {
 })
 
 // ── 模式切换 ──
-// v0.8.2+ 用 action_desc 字符串（非数字ID）
-const modes = [
+// v0.8.2+ 用 action_desc 字符串；但 SIT_DOWN/ZERO_TORQUE 后端不认字符串，
+// 必须带 value 数字 ID（api_reference McAction.value：4=ZERO_TORQUE 2000=SIT_DOWN）
+const modes: { id: string; label: string; icon: string; danger: boolean; value?: number }[] = [
   { id: 'DAMPING_DEFAULT', label: '阻尼', icon: '🛡️', danger: false },
   { id: 'STAND_DEFAULT', label: '站立', icon: '🧍', danger: false },
   { id: 'LOCOMOTION_DEFAULT', label: '行走', icon: '🚶', danger: false },
-  { id: 'SIT_DOWN_DEFAULT', label: '坐下', icon: '🪑', danger: false },
-  { id: 'ZERO_TORQUE_DEFAULT', label: '零力矩', icon: '⚠️', danger: true },
+  { id: 'SIT_DOWN_DEFAULT', label: '坐下', icon: '🪑', danger: false, value: 2000 },
+  { id: 'ZERO_TORQUE_DEFAULT', label: '零力矩', icon: '⚠️', danger: true, value: 4 },
 ]
 const activeMode = ref<string | null>(null)
 
 async function setMode(id: string) {
   activeMode.value = id
-  try { await switchMode(id) } catch { /* */ }
+  try {
+    const m = modes.find(m => m.id === id)
+    await switchMode(id, m?.value)
+  } catch { /* */ }
   activeMode.value = null
 }
 

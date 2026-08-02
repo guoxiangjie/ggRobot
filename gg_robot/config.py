@@ -87,9 +87,5 @@ PC3_PASSWORD = os.environ.get("GGROBOT_PC3_PASSWORD", "")  # 配了则用 sshpas
 VEL_SOURCE_NAME = _get("velocity.source_name", "web_ui")
 VEL_PUBLISH_RATE = _get("velocity.publish_rate", 50)
 
-# 激光避障
-NAV_STOP_DISTANCE = _get("navigation.stop_distance", 0.5)
-NAV_AVOID_DISTANCE = _get("navigation.avoid_distance", 0.8)
-NAV_SLOW_DISTANCE = _get("navigation.slow_distance", 1.5)
-NAV_MAX_FORWARD_SPEED = _get("navigation.max_forward_speed", 0.4)
-NAV_MAX_ANGULAR_SPEED = _get("navigation.max_angular_speed", 0.8)
+# 注：导航参数未走本配置 —— navigation/avoidance.py 独立运行，
+# 参数硬编码在其 CFG 字典中（robot.yaml 的 navigation 段暂未接线，见该文件注释）。
