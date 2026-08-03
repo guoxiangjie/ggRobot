@@ -191,7 +191,7 @@ onUnmounted(stopPolling)
       v-model:show="editorOpen"
       preset="card"
       :title="editorTask.id ? '编辑任务' : '新建任务'"
-      style="width:min(1100px,95vw)"
+      style="width:min(1200px,96vw)"
       :mask-closable="false"
     >
       <TaskEditor v-if="editorOpen" :task="editorTask" @saved="onSaved" @close="editorOpen = false" />

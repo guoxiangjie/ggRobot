@@ -10,6 +10,7 @@ import IconContentSave from '~icons/mdi/content-save'
 import IconPlus from '~icons/mdi/plus'
 import IconArrowUp from '~icons/mdi/arrow-up'
 import IconArrowDown from '~icons/mdi/arrow-down'
+import IconSettings from '~icons/mdi/cog-outline'
 import IconTts from '~icons/mdi/text-to-speech'
 import IconWait from '~icons/mdi/timer-sand'
 import IconMotion from '~icons/mdi/human-greeting-variant'
@@ -65,7 +66,6 @@ const HTTP_METHOD_OPTIONS = [
   { label: 'DELETE', value: 'DELETE' },
   { label: 'PATCH', value: 'PATCH' },
 ]
-// MOTION_OPTIONS / motionLabel 已移至 @/config/motions（权威 29 组合，避免无效 motion×area）
 // 表情 ID → 名称（来自 AimDK 文档枚举）
 const EMOJI_OPTIONS = [
   { label: '眨眼', value: 1 },
@@ -147,16 +147,69 @@ const STEP_DEFAULTS: Record<string, Record<string, unknown>> = {
 
 function typeMeta(type: string) { return STEP_TYPES.find(s => s.type === type) || { label: type, icon: IconPlus, color: '#666' } }
 
-// ── 编辑状态 ──
+// ── 编辑状态（左右布局：左链路 / 右配置）──
 const editTask = ref<Task>({ id: '', name: '', desc: '', steps: [] })
-const stepEditOpen = ref(false)
-const stepEditIndex = ref(-1)
-const stepEditData = ref<TaskStep>({} as TaskStep)
+const selectedIndex = ref<number | null>(null)   // 左侧选中的步骤下标
+const stepDraft = ref<TaskStep>({} as TaskStep)  // 右侧配置的工作副本
 const addMenuOpen = ref(false)
+const draftMotions = computed<any[]>(() => ((stepDraft.value as any).motions || []))
+const draftEmojis = computed<number[]>(() => ((stepDraft.value as any).emojis || []))
 
-watch(() => props.task, (t) => { editTask.value = JSON.parse(JSON.stringify(t)) }, { immediate: true })
+watch(() => props.task, (t) => {
+  editTask.value = JSON.parse(JSON.stringify(t))
+  selectedIndex.value = null
+}, { immediate: true })
 
-// ── 步骤操作 ──
+// ── 左侧：链路操作 ──
+function selectStep(i: number) {
+  selectedIndex.value = i
+  stepDraft.value = JSON.parse(JSON.stringify(editTask.value.steps[i]))
+}
+
+function addStep(type: string) {
+  editTask.value.steps.push({ type, ...STEP_DEFAULTS[type] })
+  addMenuOpen.value = false
+  selectStep(editTask.value.steps.length - 1)  // 自动选中，右侧打开配置
+}
+
+function deleteStep(index: number) {
+  editTask.value.steps.splice(index, 1)
+  if (selectedIndex.value === index) selectedIndex.value = null
+  else if (selectedIndex.value != null && selectedIndex.value > index) selectedIndex.value--
+}
+
+function moveStep(index: number, dir: -1 | 1) {
+  const target = index + dir
+  if (target < 0 || target >= editTask.value.steps.length) return
+  const arr = editTask.value.steps
+  ;[arr[index], arr[target]] = [arr[target], arr[index]]
+  if (selectedIndex.value === index) selectedIndex.value = target
+  else if (selectedIndex.value === target) selectedIndex.value = index
+}
+
+// ── 右侧：步骤配置 ──
+function applyStep() {
+  if (selectedIndex.value == null) return
+  const data = { ...stepDraft.value }
+  // 灵创动作：根据 resource_key 自动补全 version/resource_type/name
+  if (data.type === 'linkcraft' && data.resource_key) {
+    const r = linkcraftMap.value[data.resource_key as string]
+    if (r) { data.version = r.version; data.resource_type = r.type; data.name = r.name }
+  }
+  editTask.value.steps[selectedIndex.value] = data
+  stepDraft.value = data
+  message.success('步骤已更新')
+}
+
+function onLinkcraftChange(key: string) {
+  const r = linkcraftMap.value[key]
+  if (r) {
+    ;(stepDraft.value as any).version = r.version
+    ;(stepDraft.value as any).resource_type = r.type
+    ;(stepDraft.value as any).name = r.name
+  }
+}
+
 function stepSummary(step: TaskStep): string {
   switch (step.type) {
     case 'tts': {
@@ -181,51 +234,13 @@ function stepSummary(step: TaskStep): string {
   }
 }
 
-function addStep(type: string) {
-  editTask.value.steps.push({ type, ...STEP_DEFAULTS[type] })
-  addMenuOpen.value = false
-  // 自动打开编辑
-  openStepEdit(editTask.value.steps.length - 1)
-}
-
-function openStepEdit(index: number) {
-  stepEditIndex.value = index
-  stepEditData.value = JSON.parse(JSON.stringify(editTask.value.steps[index]))
-  stepEditOpen.value = true
-}
-
-function saveStepEdit() {
-  const data = { ...stepEditData.value }
-  // 灵创动作：根据 resource_key 自动补全 version/resource_type/name
-  if (data.type === 'linkcraft' && data.resource_key) {
-    const r = linkcraftMap.value[data.resource_key as string]
-    if (r) { data.version = r.version; data.resource_type = r.type; data.name = r.name }
-  }
-  editTask.value.steps[stepEditIndex.value] = data
-  stepEditOpen.value = false
-}
-
-function deleteStep(index: number) {
-  editTask.value.steps.splice(index, 1)
-  stepEditOpen.value = false
-}
-
-function moveStep(index: number, dir: -1 | 1) {
-  const target = index + dir
-  if (target < 0 || target >= editTask.value.steps.length) return
-  const arr = editTask.value.steps
-  ;[arr[index], arr[target]] = [arr[target], arr[index]]
-}
-
-// ── TTS 节点挂载：动作 / 表情 ──
+// ── TTS 挂载：动作 / 表情（编辑右侧选中的 tts 步骤）──
 const mountOpen = ref(false)
 const mountMode = ref<'motion' | 'emoji'>('motion')
-const mountStepIndex = ref(-1)
 const mountMotion = ref<{ kind: 'preset' | 'linkcraft'; motion_id: number; area: number; resource_key: string }>({ kind: 'preset', motion_id: 1002, area: 2, resource_key: '' })
 const mountEmoji = ref<number>(90)
 
-function openMount(stepIndex: number, mode: 'motion' | 'emoji') {
-  mountStepIndex.value = stepIndex
+function openMount(mode: 'motion' | 'emoji') {
   mountMode.value = mode
   if (mode === 'motion') {
     mountMotion.value = { kind: 'preset', motion_id: 1002, area: 2, resource_key: '' }
@@ -236,34 +251,32 @@ function openMount(stepIndex: number, mode: 'motion' | 'emoji') {
 }
 
 function saveMount() {
-  const step: any = editTask.value.steps[mountStepIndex.value]
-  if (!step) { mountOpen.value = false; return }
-  if (step.type === 'tts') {
-    if (mountMode.value === 'motion') {
-      if (!step.motions) step.motions = []
-      if (mountMotion.value.kind === 'linkcraft') {
-        const key = mountMotion.value.resource_key
-        const r = linkcraftMap.value[key]
-        step.motions.push({
-          kind: 'linkcraft',
-          resource_key: key,
-          version: r?.version || '',
-          resource_type: r?.type || '',
-          name: r?.name || key,
-        })
-      } else {
-        step.motions.push({ kind: 'preset', motion_id: mountMotion.value.motion_id, area: mountMotion.value.area })
-      }
+  const step: any = stepDraft.value
+  if (!step || step.type !== 'tts') { mountOpen.value = false; return }
+  if (mountMode.value === 'motion') {
+    if (!step.motions) step.motions = []
+    if (mountMotion.value.kind === 'linkcraft') {
+      const key = mountMotion.value.resource_key
+      const r = linkcraftMap.value[key]
+      step.motions.push({
+        kind: 'linkcraft',
+        resource_key: key,
+        version: r?.version || '',
+        resource_type: r?.type || '',
+        name: r?.name || key,
+      })
     } else {
-      if (!step.emojis) step.emojis = []
-      step.emojis.push(mountEmoji.value)
+      step.motions.push({ kind: 'preset', motion_id: mountMotion.value.motion_id, area: mountMotion.value.area })
     }
+  } else {
+    if (!step.emojis) step.emojis = []
+    step.emojis.push(mountEmoji.value)
   }
   mountOpen.value = false
 }
 
-function removeMount(stepIndex: number, kind: 'motion' | 'emoji', mountIndex: number) {
-  const step: any = editTask.value.steps[stepIndex]
+function removeMount(kind: 'motion' | 'emoji', mountIndex: number) {
+  const step: any = stepDraft.value
   if (!step || step.type !== 'tts') return
   if (kind === 'motion' && step.motions) step.motions.splice(mountIndex, 1)
   if (kind === 'emoji' && step.emojis) step.emojis.splice(mountIndex, 1)
@@ -281,95 +294,174 @@ async function handleSave() {
 
 <template>
   <div class="editor">
-    <!-- 顶部信息 -->
-    <div class="editor-meta">
-      <NInput v-model:value="editTask.name" placeholder="任务名称（必填）" size="small" />
+    <!-- 顶部：任务信息 + 保存 -->
+    <div class="editor-top">
+      <NInput v-model:value="editTask.name" placeholder="任务名称（必填）" size="small" style="width: 260px" />
       <NInput v-model:value="editTask.desc" placeholder="任务描述（可选）" size="small" />
-    </div>
-
-    <!-- 步骤列表 -->
-    <div class="steps-container">
-      <div class="steps-head">
-        <span class="steps-title">步骤（{{ editTask.steps.length }}）</span>
-        <NButton size="small" type="primary" @click="handleSave">
-          <template #icon><IconContentSave /></template>
-          保存
-        </NButton>
-      </div>
-      <NScrollbar style="max-height:520px; flex:1;">
-        <div class="steps-list">
-          <template v-if="editTask.steps.length">
-            <!-- START 标记 -->
-            <div class="step-marker">▶ 开始</div>
-            <template v-for="(step, i) in editTask.steps" :key="i">
-              <!-- 连接线 -->
-              <div class="connector"></div>
-              <!-- 步骤卡片 -->
-              <div class="step-card" @click="openStepEdit(i)">
-                <div class="step-main">
-                  <div class="step-index">{{ i + 1 }}</div>
-                  <div class="step-icon" :style="{ background: typeMeta(step.type).color + '22', color: typeMeta(step.type).color }">
-                    <component :is="typeMeta(step.type).icon" style="font-size:20px" />
-                  </div>
-                  <div class="step-body">
-                    <div class="step-type">{{ typeMeta(step.type).label }}</div>
-                    <div class="step-desc">{{ stepSummary(step) }}</div>
-                  </div>
-                  <div class="step-actions" @click.stop>
-                    <NButton size="tiny" text :disabled="i === 0" @click="moveStep(i, -1)"><IconArrowUp /></NButton>
-                    <NButton size="tiny" text :disabled="i === editTask.steps.length - 1" @click="moveStep(i, 1)"><IconArrowDown /></NButton>
-                    <NButton size="tiny" text type="error" @click="deleteStep(i)"><IconDelete /></NButton>
-                  </div>
-                </div>
-
-                <!-- TTS 挂载区：动作 / 表情（并行执行） -->
-                <div v-if="step.type === 'tts'" class="mount-zone" @click.stop>
-                  <div
-                    v-for="(m, mi) in ((step.motions as any[]) || [])" :key="'m'+mi"
-                    class="mount-item"
-                    :class="m.kind === 'linkcraft' ? 'linkcraft-item' : 'motion-item'"
-                  >
-                    <span v-if="m.kind === 'linkcraft'" class="mount-tag-text">{{ linkcraftLabel(m.resource_key) }}</span>
-                    <span v-else class="mount-tag-text">{{ motionLabel(Number(m.motion_id), Number(m.area)) }}</span>
-                    <NButton size="tiny" text type="error" @click="removeMount(i, 'motion', mi)">✕</NButton>
-                  </div>
-                  <div
-                    v-for="(e, ei) in (step.emojis || [])" :key="'e'+ei"
-                    class="mount-item emoji-item"
-                  >
-                    <span class="mount-tag-text">{{ emojiLabel(e) }}</span>
-                    <NButton size="tiny" text type="error" @click="removeMount(i, 'emoji', ei)">✕</NButton>
-                  </div>
-                  <div class="mount-buttons">
-                    <NButton size="tiny" dashed @click="openMount(i, 'motion')">
-                      <template #icon><IconPlus /></template>
-                      动作
-                    </NButton>
-                    <NButton size="tiny" dashed @click="openMount(i, 'emoji')">
-                      <template #icon><IconPlus /></template>
-                      表情
-                    </NButton>
-                  </div>
-                </div>
-              </div>
-            </template>
-
-            <!-- 结束连接线 -->
-            <div class="connector"></div>
-            <div class="step-marker end">■ 结束</div>
-          </template>
-
-          <NEmpty v-else description="还没有步骤，点击下方按钮添加" size="small" style="margin:40px 0" />
-        </div>
-      </NScrollbar>
-    </div>
-
-    <!-- 添加按钮 -->
-    <div class="add-bar">
-      <NButton dashed block @click="addMenuOpen = true">
-        <template #icon><IconPlus /></template>
-        添加步骤
+      <NButton size="small" type="primary" @click="handleSave">
+        <template #icon><IconContentSave /></template>
+        保存任务
       </NButton>
+    </div>
+
+    <!-- 主体：左链路 / 右配置 -->
+    <div class="editor-body">
+      <!-- ── 左：链路展示 ── -->
+      <div class="flow-pane">
+        <div class="pane-head">
+          <span class="pane-title">任务流程</span>
+          <span class="pane-count">{{ editTask.steps.length }} 步</span>
+        </div>
+        <NScrollbar class="pane-scroll">
+          <div class="steps-list">
+            <template v-if="editTask.steps.length">
+              <div class="step-marker">▶ 开始</div>
+              <template v-for="(step, i) in editTask.steps" :key="i">
+                <div class="connector"></div>
+                <div class="step-card" :class="{ selected: selectedIndex === i }" @click="selectStep(i)">
+                  <div class="step-main">
+                    <div class="step-index">{{ i + 1 }}</div>
+                    <div class="step-icon" :style="{ background: typeMeta(step.type).color + '22', color: typeMeta(step.type).color }">
+                      <component :is="typeMeta(step.type).icon" style="font-size:20px" />
+                    </div>
+                    <div class="step-body">
+                      <div class="step-type">{{ typeMeta(step.type).label }}</div>
+                      <div class="step-desc">{{ stepSummary(step) }}</div>
+                    </div>
+                    <div class="step-actions" @click.stop>
+                      <NButton size="tiny" text :disabled="i === 0" @click="moveStep(i, -1)"><IconArrowUp /></NButton>
+                      <NButton size="tiny" text :disabled="i === editTask.steps.length - 1" @click="moveStep(i, 1)"><IconArrowDown /></NButton>
+                      <NButton size="tiny" text type="error" @click="deleteStep(i)"><IconDelete /></NButton>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <div class="connector"></div>
+              <div class="step-marker end">■ 结束</div>
+            </template>
+            <NEmpty v-else description="还没有步骤，点击下方按钮添加" size="small" style="margin:36px 0" />
+          </div>
+        </NScrollbar>
+        <div class="flow-add">
+          <NButton dashed block size="small" @click="addMenuOpen = true">
+            <template #icon><IconPlus /></template>
+            添加步骤
+          </NButton>
+        </div>
+      </div>
+
+      <!-- ── 右：配置区域 ── -->
+      <div class="config-pane">
+        <template v-if="selectedIndex != null">
+          <div class="pane-head config-head">
+            <NTag :color="{ color: typeMeta(stepDraft.type).color, textColor: '#fff' }" size="small">
+              {{ typeMeta(stepDraft.type).label }}
+            </NTag>
+            <span class="pane-count">步骤 {{ selectedIndex + 1 }} / {{ editTask.steps.length }}</span>
+          </div>
+          <NScrollbar class="pane-scroll">
+            <div class="config-form">
+              <template v-for="param in STEP_PARAMS[stepDraft.type as string] || []" :key="param.name">
+                <div class="form-row" :class="{ 'switch-row': param.type === 'switch' }">
+                  <template v-if="param.type === 'switch'">
+                    <div class="switch-line">
+                      <span class="form-label">{{ param.label }}</span>
+                      <NSwitch v-model:value="(stepDraft as any)[param.name]" />
+                    </div>
+                  </template>
+                  <template v-else>
+                    <span class="form-label">{{ param.label }}</span>
+                    <NInput v-if="param.type === 'string' && param.name !== 'resource_key'" v-model:value="(stepDraft as any)[param.name]" size="small" type="textarea" :autosize="{ minRows: 1, maxRows: 3 }" />
+                    <NSelect
+                      v-else-if="param.name === 'resource_key'"
+                      v-model:value="(stepDraft as any)[param.name]"
+                      size="small"
+                      filterable
+                      :options="linkcraftOptions"
+                      :placeholder="linkcraftResources.length ? '选择灵创动作' : '未获取到动作（机器人离线或无资源）'"
+                      @update:value="onLinkcraftChange"
+                    />
+                    <NSelect
+                      v-else-if="param.name === 'motion_id'"
+                      :value="motionKey(Number((stepDraft as any).motion_id) || 0, Number((stepDraft as any).area) || 0)"
+                      size="small"
+                      filterable
+                      :options="MOTION_OPTIONS"
+                      @update:value="(v: string) => { const c = parseMotionKey(v); (stepDraft as any).motion_id = c.motion; (stepDraft as any).area = c.area }"
+                    />
+                    <NSelect
+                      v-else-if="param.name === 'emotion_id'"
+                      v-model:value="(stepDraft as any)[param.name]"
+                      size="small"
+                      filterable
+                      :options="EMOJI_OPTIONS"
+                    />
+                    <NInputNumber v-else-if="param.type === 'number'" v-model:value="(stepDraft as any)[param.name]" size="small" :step="0.1" style="width:100%" />
+                    <NSelect
+                      v-else-if="param.type === 'select'"
+                      v-model:value="(stepDraft as any)[param.name]"
+                      size="small"
+                      :options="(param.options || []).map((o: any) => ({ label: o.label, value: o.value }))"
+                    />
+                  </template>
+                  <span v-if="param.hint" class="form-hint">{{ param.hint }}</span>
+                </div>
+              </template>
+
+              <!-- TTS 挂载区：并行动作 / 表情 -->
+              <template v-if="stepDraft.type === 'tts'">
+                <div class="form-row">
+                  <span class="form-label">并行挂载</span>
+                  <div class="mount-zone">
+                    <div
+                      v-for="(m, mi) in draftMotions" :key="'m'+mi"
+                      class="mount-item"
+                      :class="m.kind === 'linkcraft' ? 'linkcraft-item' : 'motion-item'"
+                    >
+                      <span v-if="m.kind === 'linkcraft'" class="mount-tag-text">{{ linkcraftLabel(m.resource_key) }}</span>
+                      <span v-else class="mount-tag-text">{{ motionLabel(Number(m.motion_id), Number(m.area)) }}</span>
+                      <NButton size="tiny" text type="error" @click="removeMount('motion', mi)">✕</NButton>
+                    </div>
+                    <div
+                      v-for="(e, ei) in draftEmojis" :key="'e'+ei"
+                      class="mount-item emoji-item"
+                    >
+                      <span class="mount-tag-text">{{ emojiLabel(e) }}</span>
+                      <NButton size="tiny" text type="error" @click="removeMount('emoji', ei)">✕</NButton>
+                    </div>
+                    <div class="mount-buttons">
+                      <NButton size="tiny" dashed @click="openMount('motion')">
+                        <template #icon><IconPlus /></template>
+                        动作
+                      </NButton>
+                      <NButton size="tiny" dashed @click="openMount('emoji')">
+                        <template #icon><IconPlus /></template>
+                        表情
+                      </NButton>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </NScrollbar>
+          <div class="config-footer">
+            <NButton size="small" type="error" secondary @click="deleteStep(selectedIndex)">
+              <template #icon><IconDelete /></template>
+              删除步骤
+            </NButton>
+            <NButton size="small" type="primary" @click="applyStep">
+              <template #icon><IconContentSave /></template>
+              应用到步骤
+            </NButton>
+          </div>
+        </template>
+
+        <div v-else class="config-empty">
+          <IconSettings style="font-size: 40px; opacity: 0.25;" />
+          <p>点击左侧步骤卡片，在此配置参数</p>
+          <p class="config-empty-sub">或点"添加步骤"开始编排</p>
+        </div>
+      </div>
     </div>
 
     <!-- 添加菜单 -->
@@ -384,70 +476,6 @@ async function handleSave() {
             <component :is="t.icon" style="font-size:24px" />
           </div>
           <div class="type-label">{{ t.label }}</div>
-        </div>
-      </div>
-    </NModal>
-
-    <!-- 步骤参数编辑 -->
-    <NModal v-model:show="stepEditOpen" preset="card" title="编辑步骤" style="width:480px">
-      <div style="display:flex;flex-direction:column;gap:14px">
-        <div class="form-row" style="flex-direction:row;align-items:center;gap:8px">
-          <NTag :color="{ color: typeMeta(stepEditData.type).color, textColor: '#fff' }" size="small">
-            {{ typeMeta(stepEditData.type).label }}
-          </NTag>
-        </div>
-        <template v-for="param in STEP_PARAMS[stepEditData.type as string] || []" :key="param.name">
-          <div class="form-row" :class="{ 'switch-row': param.type === 'switch' }">
-            <template v-if="param.type === 'switch'">
-              <div class="switch-line">
-                <span class="form-label">{{ param.label }}</span>
-                <NSwitch v-model:value="(stepEditData as any)[param.name]" />
-              </div>
-            </template>
-            <template v-else>
-              <span class="form-label">{{ param.label }}</span>
-              <NInput v-if="param.type === 'string' && param.name !== 'resource_key'" v-model:value="(stepEditData as any)[param.name]" size="small" type="textarea" :autosize="{ minRows: 1, maxRows: 3 }" />
-              <NSelect
-                v-else-if="param.name === 'resource_key'"
-                v-model:value="(stepEditData as any)[param.name]"
-                size="small"
-                filterable
-                :options="linkcraftOptions"
-                :placeholder="linkcraftResources.length ? '选择灵创动作' : '未获取到动作（机器人离线或无资源）'"
-              />
-              <NSelect
-                v-else-if="param.name === 'motion_id'"
-                :value="motionKey(Number((stepEditData as any).motion_id) || 0, Number((stepEditData as any).area) || 0)"
-                size="small"
-                filterable
-                :options="MOTION_OPTIONS"
-                @update:value="(v: string) => { const c = parseMotionKey(v); (stepEditData as any).motion_id = c.motion; (stepEditData as any).area = c.area }"
-              />
-              <NSelect
-                v-else-if="param.name === 'emotion_id'"
-                v-model:value="(stepEditData as any)[param.name]"
-                size="small"
-                filterable
-                :options="EMOJI_OPTIONS"
-              />
-              <NInputNumber v-else-if="param.type === 'number'" v-model:value="(stepEditData as any)[param.name]" size="small" :step="0.1" style="width:100%" />
-              <NSelect
-                v-else-if="param.type === 'select'"
-                v-model:value="(stepEditData as any)[param.name]"
-                size="small"
-                :options="(param.options || []).map((o: any) => ({ label: o.label, value: o.value }))"
-              />
-            </template>
-            <span v-if="param.hint" class="form-hint">{{ param.hint }}</span>
-          </div>
-        </template>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-          <NButton size="small" type="error" secondary @click="deleteStep(stepEditIndex)">
-            <template #icon><IconDelete /></template> 删除
-          </NButton>
-          <NButton size="small" type="primary" @click="saveStepEdit">
-            <template #icon><IconContentSave /></template> 确定
-          </NButton>
         </div>
       </div>
     </NModal>
@@ -504,69 +532,85 @@ async function handleSave() {
 </template>
 
 <style scoped>
-.editor { display: flex; flex-direction: column; height: 600px; }
+.editor { display: flex; flex-direction: column; height: 660px; }
 
-.editor-meta { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+/* ── 顶部 ── */
+.editor-top { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
 
-.steps-container { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
-.steps-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
-.steps-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
-.steps-list { display: flex; flex-direction: column; align-items: center; padding: 16px; }
+/* ── 左右主体 ── */
+.editor-body { flex: 1; display: flex; gap: 14px; min-height: 0; }
+
+.flow-pane, .config-pane {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+}
+.flow-pane { width: 44%; flex-shrink: 0; }
+.config-pane { flex: 1; }
+
+.pane-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.pane-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+.pane-count { font-size: 11px; color: var(--text-secondary); opacity: 0.8; font-family: 'JetBrains Mono', monospace; }
+.config-head { justify-content: space-between; }
+.pane-scroll { flex: 1; min-height: 0; }
+
+/* ── 左：链路 ── */
+.steps-list { display: flex; flex-direction: column; align-items: center; padding: 14px; }
 
 .step-marker {
   padding: 4px 16px; border-radius: 16px; font-size: 11px; font-weight: 700;
   background: #1a3a1a; border: 1px solid #3cc98e; color: #3cc98e;
 }
 .step-marker.end { background: #1a1a2a; border-color: #4da6ff; color: #4da6ff; }
-
-.connector { width: 2px; height: 16px; background: var(--border); }
+.connector { width: 2px; height: 14px; background: var(--border); }
 
 .step-card {
-  display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 560px;
-  padding: 10px 14px; background: var(--surface); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px; width: 100%;
+  padding: 10px 12px; background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); cursor: pointer; transition: all 0.15s;
 }
 .step-card:hover { border-color: var(--accent); background: rgba(77,166,255,0.04); }
+.step-card.selected { border-color: var(--accent); background: rgba(77,166,255,0.08); box-shadow: 0 0 10px rgba(77,166,255,0.12); }
 
 .step-main { display: flex; align-items: center; gap: 12px; width: 100%; }
-
 .step-index {
   width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
   background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 700; color: var(--text-secondary);
 }
-.step-icon {
-  width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-}
+.step-icon { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .step-body { flex: 1; min-width: 0; }
 .step-type { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 .step-desc { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.step-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.step-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0.55; transition: opacity 0.15s; }
+.step-card:hover .step-actions { opacity: 1; }
+
+.flow-add { padding: 10px 12px; border-top: 1px solid var(--border); }
+
+/* ── 右：配置 ── */
+.config-form { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+.config-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; color: var(--text-secondary); font-size: 13px;
+}
+.config-empty p { margin: 0; }
+.config-empty-sub { font-size: 11px; opacity: 0.7; }
+.config-footer { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); }
 
 /* ── TTS 挂载区 ── */
 .mount-zone {
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-  padding: 8px 10px; margin-top: 4px;
-  background: rgba(0,0,0,0.18); border: 1px dashed var(--border);
+  padding: 8px 10px; background: rgba(0,0,0,0.18); border: 1px dashed var(--border);
   border-radius: 6px;
 }
-.mount-item {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 2px 8px; border-radius: 12px; font-size: 11px;
-}
+.mount-item { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .motion-item { background: rgba(255,152,0,0.14); color: #ffb74d; border: 1px solid rgba(255,152,0,0.3); }
 .linkcraft-item { background: rgba(0,172,193,0.14); color: #4dd0e1; border: 1px solid rgba(0,172,193,0.3); }
 .emoji-item { background: rgba(233,30,99,0.14); color: #f06292; border: 1px solid rgba(233,30,99,0.3); }
-.mount-tag-icon { font-size: 13px; }
 .mount-tag-text { white-space: nowrap; }
 .mount-buttons { display: flex; gap: 6px; margin-left: auto; }
 
-.add-bar { margin-top: 12px; }
-
-.type-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
-}
+/* ── 添加菜单 ── */
+.type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .type-item {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 16px 8px; background: var(--surface); border: 1px solid var(--border);
@@ -576,6 +620,7 @@ async function handleSave() {
 .type-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
 .type-label { font-size: 12px; }
 
+/* ── 表单 ── */
 .form-row { display: flex; flex-direction: column; gap: 4px; }
 .form-row.switch-row { gap: 6px; }
 .switch-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
