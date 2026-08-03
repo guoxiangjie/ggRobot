@@ -40,7 +40,7 @@ def _build_schema_lines() -> list[str]:
 
 
 _SCHEMA_LINES = _build_schema_lines()
-_MOTION_LIST = ", ".join(f"{m}:{a}" for m, a, _ in MOTION_COMBOS)
+_MOTION_LIST = "; ".join(f"{name}({m}:{a})" for m, a, name in MOTION_COMBOS)
 
 _SYSTEM_PROMPT = f"""你是机器人任务编排助手。用户会用自然语言描述想让机器人执行的动作，请只输出一个 JSON 对象（不要 Markdown 代码块、不要任何多余文字），格式：
 {{"name": "简短任务名", "desc": "一句话描述", "steps": [步骤或块...]}}
@@ -58,6 +58,8 @@ steps 里的每一项可以是：
 {_MOTION_LIST}
 
 约束：
+- 用户说"同时/一边…一边/介绍时挥手"等，语音播报(tts)与手臂/头部动作要放进
+  parallel 块并行执行；只有明确说"先…再…"的先后顺序才按普通步骤顺序排列
 - 并行组内不要放两个 velocity（互相覆盖）、不要放两个 tts（互相打断）、
   不要 mode 与 velocity/motion 并行、不要同区域两个 motion
 - 条件表达式支持 {{{{var.字段}}}} 与 == != > < >= <= in contains and/or/not，
