@@ -678,6 +678,7 @@ async function handleSave() {
           <div class="pane-head config-head">
             <span class="block-badge"><IconParallel style="font-size:14px" /> 并行组</span>
             <NInput v-model:value="parallelBlock.name" size="small" placeholder="并行组名称" style="width:160px" />
+            <NButton size="tiny" text type="error" @click="deleteAt(sel.path)"><IconDelete /></NButton>
           </div>
           <NScrollbar class="pane-scroll">
             <div class="config-form">
