@@ -196,7 +196,14 @@ function blockAt(path: Path): any {
     if (cur == null) return null
     if (Array.isArray(cur)) {
       cur = cur[p as number]
+    } else if (cur && cur.type === 'parallel' && typeof p === 'number') {
+      // 并行组：数字下标 → branches[bi]
+      cur = (cur.branches || [])[p as number]
+    } else if (cur && Array.isArray(cur.steps) && typeof p === 'number') {
+      // 并行分支对象 {id, steps}：数字下标 → steps[si]
+      cur = cur.steps[p as number]
     } else if (typeof cur === 'object') {
+      // 分支块 then/else 等命名键
       cur = cur[p as string]
     } else {
       return null
