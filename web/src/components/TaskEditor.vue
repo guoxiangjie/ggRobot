@@ -2,7 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import {
   NButton, NInput, NModal, NSelect, NTag, NInputNumber, NDivider,
-  NScrollbar, NEmpty, NRadioGroup, NRadioButton, NSwitch
+  NScrollbar, NEmpty, NRadioGroup, NRadioButton, NSwitch, useMessage,
 } from 'naive-ui'
 import { saveTask, type Task, type TaskStep } from '@/api/fastapi'
 import IconDelete from '~icons/mdi/delete'
@@ -25,6 +25,7 @@ import { MOTION_OPTIONS, motionLabel, motionKey, parseMotionKey } from '@/config
 
 const props = defineProps<{ task: Task }>()
 const emit = defineEmits<{ saved: []; close: [] }>()
+const message = useMessage()
 
 // 灵创动作资源（从机器人实时拉取）
 const linkcraftResources = ref<RobotResource[]>([])
@@ -269,12 +270,12 @@ function removeMount(stepIndex: number, kind: 'motion' | 'emoji', mountIndex: nu
 }
 
 async function handleSave() {
-  if (!editTask.value.name.trim()) { alert('请输入任务名称'); return }
+  if (!editTask.value.name.trim()) { message.warning('请输入任务名称'); return }
   try {
     await saveTask(JSON.parse(JSON.stringify(editTask.value)))
-    alert('已保存')
+    message.success('已保存')
     emit('saved'); emit('close')
-  } catch { alert('保存失败') }
+  } catch { message.error('保存失败') }
 }
 </script>
 
