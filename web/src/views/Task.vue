@@ -215,7 +215,7 @@ onUnmounted(stopPolling)
           </NButton>
           <NButton size="small" quaternary @click="aiOpen = false">取消</NButton>
         </div>
-        <p class="ai-tip">未配置 AI 接口时使用内置规则生成（支持：打招呼 / 跳舞 / 巡逻 / 比心 / 挥手 / 鞠躬 / 飞吻 / 前进等）。生成结果会打开编辑器，可微调后保存。</p>
+        <p class="ai-tip">未配置 AI 接口时使用内置规则生成（支持：边走边说 / 打招呼 / 跳舞 / 巡逻 / 比心 / 挥手 / 鞠躬 / 飞吻 / 前进等）；配置 OpenAI 兼容接口后支持任意描述与并行/分支结构。生成结果会打开编辑器，可微调后保存。</p>
       </div>
     </NModal>
   </div>
