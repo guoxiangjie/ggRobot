@@ -791,7 +791,7 @@ async function handleSave() {
 </template>
 
 <style scoped>
-.editor { display: flex; flex-direction: column; height: 680px; }
+.editor { display: flex; flex-direction: column; height: 720px; }
 
 /* ── 顶部 ── */
 .editor-top { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
@@ -799,7 +799,7 @@ async function handleSave() {
 /* ── 左右主体 ── */
 .editor-body { flex: 1; display: flex; gap: 14px; min-height: 0; }
 .flow-pane, .config-pane { display: flex; flex-direction: column; min-height: 0; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.flow-pane { width: 46%; flex-shrink: 0; }
+.flow-pane { width: 60%; flex-shrink: 0; }
 .config-pane { flex: 1; }
 .pane-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
 .pane-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
