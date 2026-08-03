@@ -12,7 +12,7 @@ GET    /api/capabilities   能力列表
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter()
 
@@ -22,6 +22,10 @@ class TaskSaveRequest(BaseModel):
     name: str = "未命名任务"
     desc: str = ""
     steps: list[dict] = []
+
+
+class GenerateTaskRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=500, description="自然语言描述想编排的动作")
 
 
 # ── 任务 CRUD ──
@@ -46,6 +50,19 @@ async def save_task(req: TaskSaveRequest):
     from ..task.store import save_task
     data = req.model_dump()
     return save_task(data)
+
+
+@router.post("/api/tasks/generate")
+def generate_task(req: GenerateTaskRequest):
+    """AI 生成编排任务（LLM 优先，未配置/失败回退本地规则）。同步路由走线程池，不阻塞事件循环。"""
+    import logging
+    logger = logging.getLogger(__name__)
+    from ..task.generate import generate_task as _gen
+    try:
+        return {"ok": True, "task": _gen(req.prompt)}
+    except Exception as e:
+        logger.exception("AI 生成任务失败")
+        return {"ok": False, "error": str(e)}
 
 
 @router.delete("/api/tasks/{task_id}")

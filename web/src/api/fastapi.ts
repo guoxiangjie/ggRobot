@@ -160,6 +160,10 @@ export interface Capability {
 export async function getTasks() { const { data } = await api.get('/api/tasks'); return data as { tasks: Task[] } }
 export async function getTask(id: string) { const { data } = await api.get(`/api/tasks/${id}`); return data as Task }
 export async function saveTask(task: Task) { const { data } = await api.post('/api/tasks', task); return data as Task }
+export async function generateTask(prompt: string) {
+  const { data } = await api.post('/api/tasks/generate', { prompt }, { timeout: 60000 })
+  return data as { ok: boolean; task?: Task; error?: string }
+}
 export async function deleteTask(id: string) { const { data } = await api.delete(`/api/tasks/${id}`); return data as { ok: boolean } }
 export async function runTask(id: string) { const { data } = await api.post(`/api/tasks/${id}/run`); return data as { ok: boolean; error?: string } }
 export async function stopTask() { const { data } = await api.post('/api/tasks/stop'); return data as { ok: boolean } }

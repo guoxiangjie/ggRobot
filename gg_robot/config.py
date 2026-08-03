@@ -92,6 +92,12 @@ VEL_PUBLISH_RATE = _get("velocity.publish_rate", 50)
 MIC_ASR_PROVIDER = _get("mic.asr_provider", "none")   # none=只采集不识别；funasr=本地 FunASR
 MIC_ASR_MODEL = _get("mic.asr_model", "paraformer-zh")
 
+# AI 任务生成
+AI_PROVIDER = _get("ai.provider", "none")      # none=本地规则生成；openai=OpenAI 兼容接口
+AI_BASE_URL = _get("ai.base_url", "")
+AI_API_KEY = os.environ.get("GGROBOT_AI_API_KEY") or _get("ai.api_key", "")
+AI_MODEL = _get("ai.model", "gpt-4o-mini")
+
 # 注：导航参数未走本配置 —— navigation/avoidance.py 独立运行，
 # 参数硬编码在其 CFG 字典中（robot.yaml 的 navigation 段暂未接线，见该文件注释）。
 

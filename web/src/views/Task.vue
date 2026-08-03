@@ -6,12 +6,14 @@ import {
 } from 'naive-ui'
 import {
   getTasks, getTask, deleteTask, runTask, stopTask, getTaskStatus,
+  generateTask,
   type Task, type TaskStatus
 } from '@/api/fastapi'
 import TaskEditor from '@/components/TaskEditor.vue'
 import IconPlay from '~icons/mdi/play'
 import IconStop from '~icons/mdi/stop'
 import IconPlus from '~icons/mdi/plus'
+import IconWand from '~icons/mdi/auto-fix'
 import IconDelete from '~icons/mdi/delete'
 import IconPencil from '~icons/mdi/pencil'
 import IconSearch from '~icons/mdi/magnify'
@@ -28,6 +30,10 @@ const taskStatus = ref<TaskStatus>({ running: false, task_id: '', task_name: '',
 const searchQuery = ref('')
 const editorOpen = ref(false)
 const editorTask = ref<Task>({ id: '', name: '新任务', desc: '', steps: [] })
+const aiOpen = ref(false)
+const aiPrompt = ref('')
+const aiLoading = ref(false)
+const aiError = ref('')
 
 const filteredTasks = computed(() => {
   if (!searchQuery.value) return tasks.value
@@ -52,6 +58,28 @@ function openEditor(taskId?: string) {
 }
 
 function onSaved() { loadTasks() }
+
+async function runGenerate() {
+  const prompt = aiPrompt.value.trim()
+  if (!prompt || aiLoading.value) return
+  aiLoading.value = true
+  aiError.value = ''
+  try {
+    const res = await generateTask(prompt)
+    if (!res.ok || !res.task) {
+      aiError.value = res.error || '生成失败'
+      return
+    }
+    aiOpen.value = false
+    // 直接打开编辑器微调，保存后即成为正式任务
+    editorTask.value = JSON.parse(JSON.stringify({ ...res.task, id: '' }))
+    editorOpen.value = true
+  } catch {
+    aiError.value = '生成请求失败'
+  } finally {
+    aiLoading.value = false
+  }
+}
 
 async function handleRun(taskId: string) {
   try {
@@ -111,6 +139,10 @@ onUnmounted(stopPolling)
         <template #icon><IconPlus /></template>
         新建任务
       </NButton>
+      <NButton type="info" secondary size="small" @click="aiOpen = true">
+        <template #icon><IconWand /></template>
+        AI 生成
+      </NButton>
     </div>
 
     <!-- ── 运行状态条 ── -->
@@ -164,6 +196,28 @@ onUnmounted(stopPolling)
     >
       <TaskEditor v-if="editorOpen" :task="editorTask" @saved="onSaved" @close="editorOpen = false" />
     </NModal>
+
+    <!-- ── AI 生成弹窗 ── -->
+    <NModal v-model:show="aiOpen" preset="card" title="AI 生成编排任务" style="width:560px">
+      <div class="ai-box">
+        <NInput
+          v-model:value="aiPrompt"
+          type="textarea"
+          placeholder="描述你想让机器人做的事，例如：让机器人自我介绍，然后鞠躬并挥手"
+          :autosize="{ minRows: 3, maxRows: 6 }"
+          :disabled="aiLoading"
+        />
+        <p v-if="aiError" class="ai-error">{{ aiError }}</p>
+        <div class="ai-actions">
+          <NButton size="small" type="primary" :loading="aiLoading" :disabled="!aiPrompt.trim()" @click="runGenerate">
+            <template #icon><IconWand /></template>
+            生成
+          </NButton>
+          <NButton size="small" quaternary @click="aiOpen = false">取消</NButton>
+        </div>
+        <p class="ai-tip">未配置 AI 接口时使用内置规则生成（支持：打招呼 / 跳舞 / 巡逻 / 比心 / 挥手 / 鞠躬 / 飞吻 / 前进等）。生成结果会打开编辑器，可微调后保存。</p>
+      </div>
+    </NModal>
   </div>
 </template>
 
@@ -201,4 +255,9 @@ onUnmounted(stopPolling)
 .toast-error { background: #3a1a1a; color: #f44b4b; border: 1px solid #f44b4b; }
 .toast-warning { background: #3a301a; color: #f0a020; border: 1px solid #f0a020; }
 @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+.ai-box { display: flex; flex-direction: column; gap: 12px; }
+.ai-actions { display: flex; gap: 8px; }
+.ai-error { margin: 0; font-size: 12px; color: var(--danger); }
+.ai-tip { margin: 0; font-size: 11px; color: var(--text-secondary); opacity: 0.75; line-height: 1.6; }
 </style>
