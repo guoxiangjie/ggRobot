@@ -100,6 +100,11 @@ def main():
     # 3. 迁移旧版用户数据（~/ggRobot 内 → DATA_DIR），再初始化内置任务/项目
     from .config import migrate_legacy_data
     migrate_legacy_data()
+    # 3.5 修复历史任务/项目里的旧动作组合（area=0 / 3004 等，v0.8.0 变更）
+    from .task.store import migrate_legacy_motions as _fix_tasks
+    from .project.store import migrate_legacy_motions as _fix_projects
+    _fix_tasks()
+    _fix_projects()
     from .task.store import init_builtin_tasks
     init_builtin_tasks()
     from .project.store import init_builtin_projects

@@ -10,6 +10,8 @@ import json
 import logging
 import re
 
+from .motions import normalize_motion, motion_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,7 +94,11 @@ def _tts(node, step: dict):
         else:
             mid = m.get("motion_id", 0)
             if mid:
-                node._do_motion(int(m.get("area", 0)), int(mid), interrupt=False)
+                mid, area, valid = normalize_motion(int(mid), m.get("area", 0))
+                if not valid:
+                    logger.warning(f"  ⚠️ 挂载动作组合无效已跳过: motion={mid} area={m.get('area', 0)}")
+                    continue
+                node._do_motion(area, mid, interrupt=False)
                 extras.append(f"动作#{mid}")
     # 3. 触发 TTS（开始说话，与上面并行）
     result = node._do_tts(text)
@@ -118,13 +124,21 @@ def _tts(node, step: dict):
 
 
 def _motion(node, step: dict):
-    """预设动作（文档 5.1.4）。interrupt 默认 True 打断前动作；step.interrupt 可覆盖"""
+    """预设动作（文档 5.1.4）。interrupt 默认 True 打断前动作；step.interrupt 可覆盖。
+
+    执行前做组合归一化：area=0 自动补默认、旧 ID（3004→1007）自动映射；
+    无效组合直接跳过并告警（机器人会静默忽略，等于白调）。
+    """
     area = step.get("area", 0)
     motion_id = step["motion_id"]
     interrupt = step.get("interrupt", True)
+    motion_id, area, valid = normalize_motion(motion_id, area)
+    if not valid:
+        logger.warning(f"  ⚠️ 动作组合无效已跳过: motion={motion_id} area={area}（有效组合见 web/src/config/motions.ts）")
+        return
     result = node._do_motion(area, motion_id, interrupt)
     ok = result.get("ok", False)
-    logger.info(f"  🕺 Motion area={area} id={motion_id} {'✅' if ok else '❌'}")
+    logger.info(f"  🕺 Motion {motion_name(motion_id, area)} ({motion_id}:{area}) {'✅' if ok else '❌'}")
 
 
 def _emoji(node, step: dict):
@@ -363,12 +377,11 @@ CAPABILITIES = [
         "icon": "🕺",
         "color": "#FF9800",
         "params": [
-            {"name": "motion_id", "label": "动作ID", "type": "number", "required": True,
-             "hint": "1001=抬手 1002=挥手 3004=比心 4001=点头 4002=摇头"},
-            {"name": "area", "label": "身体区域", "type": "select", "default": 0,
-             "options": [{"label": "自动", "value": 0}, {"label": "左手", "value": 1},
-                         {"label": "右手", "value": 2}, {"label": "头部", "value": 4},
-                         {"label": "腰部", "value": 8}]},
+            {"name": "motion_id", "label": "动作", "type": "number", "required": True,
+             "hint": "motion+area 绑定组合（v0.8.0+）：1001=举手 1002=挥手 1003=握手 1004=飞吻 1007=比心 3001=鞠躬 3017=鼓掌；需 STAND_DEFAULT 模式，area 留空自动补"},
+            {"name": "area", "label": "身体区域", "type": "select", "default": 2,
+             "options": [{"label": "左臂", "value": 1}, {"label": "右臂", "value": 2},
+                         {"label": "双臂", "value": 3}, {"label": "全身", "value": 11}]},
             {"name": "delay", "label": "完成后等待(s)", "type": "number", "default": 1.0},
         ],
     },

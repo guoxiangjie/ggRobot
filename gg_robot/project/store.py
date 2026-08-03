@@ -100,7 +100,7 @@ def init_builtin_projects():
             "nodes": [
                 {"name": "你好", "icon": "🗣️", "type": "tts", "text": "你好", "wait_done": True, "motion_wait": True, "delay": 0.5, "motions": [], "emojis": []},
                 {"name": "鞠躬", "icon": "🙇", "type": "motion", "area": 11, "motion_id": 3001, "delay": 1},
-                {"name": "挥手", "icon": "👋", "type": "motion", "area": 0, "motion_id": 1002, "delay": 1},
+                {"name": "挥手", "icon": "👋", "type": "motion", "area": 2, "motion_id": 1002, "delay": 1},
                 {"name": "比心", "icon": "❤️", "type": "motion", "area": 3, "motion_id": 1007, "delay": 1},
                 {"name": "快乐", "icon": "😊", "type": "emoji", "emotion_id": 90, "mode": 1, "delay": 0.5},
                 {"name": "站立", "icon": "🧍", "type": "mode", "action_desc": "STAND_DEFAULT", "delay": 1},
@@ -111,3 +111,22 @@ def init_builtin_projects():
     for p in builtins:
         save_project(p)
     logger.info(f"📦 已创建 {len(builtins)} 个内置项目")
+
+
+def migrate_legacy_motions():
+    """一次性修复已保存项目节点里的旧动作数据（area=0 / 旧 ID 3004 等），幂等。"""
+    from .motions import normalize_step_motions
+    fixed = 0
+    for path in PROJECTS_DIR.glob("*.json"):
+        try:
+            data = _read_json(path)
+            changed = False
+            for node in data.get("nodes", []):
+                changed = normalize_step_motions(node) or changed
+            if changed:
+                _write_json(path, data)
+                fixed += 1
+        except Exception as e:
+            logger.warning(f"跳过项目文件 {path.name}: {e}")
+    if fixed:
+        logger.info(f"🕺 已自动修复 {fixed} 个历史项目中的旧动作组合")

@@ -100,7 +100,7 @@ def init_builtin_tasks():
                 {"type": "wait", "duration": 0.5},
                 {"type": "motion", "area": 11, "motion_id": 3001, "delay": 2.5},  # 鞠躬（v0.8.2头部pitch下线，点头改鞠躬）
                 {"type": "tts", "text": "很高兴认识你", "delay": 1.0},
-                {"type": "motion", "area": 0, "motion_id": 1002, "delay": 2.0},
+                {"type": "motion", "area": 2, "motion_id": 1002, "delay": 2.0},   # 右手挥手（v0.8.0+ area 无 0，必须 1/2/3/11）
                 {"type": "emoji", "emotion_id": 1, "mode": 1},
             ],
         },
@@ -113,7 +113,7 @@ def init_builtin_tasks():
                 {"type": "emoji", "emotion_id": 100, "mode": 2},
                 {"type": "wait", "duration": 1.0},
                 {"type": "motion", "area": 3, "motion_id": 1007, "delay": 2.5},  # 双手比心（v0.8.0 motion 3004→1007）
-                {"type": "motion", "area": 0, "motion_id": 1004, "delay": 2.0},
+                {"type": "motion", "area": 2, "motion_id": 1004, "delay": 2.0},   # 右手飞吻
                 {"type": "motion", "area": 11, "motion_id": 3007, "delay": 2.0},  # 动感光波（全身 area=11）
                 {"type": "emoji", "emotion_id": 90, "mode": 1},
             ],
@@ -137,6 +137,29 @@ def init_builtin_tasks():
     for t in builtins:
         save_task(t)
     logger.info(f"📦 已创建 {len(builtins)} 个内置任务")
+
+
+def migrate_legacy_motions():
+    """一次性修复已保存任务里的旧动作数据（area=0 / 旧 ID 3004 等）。
+
+    机器人上已存在的任务文件可能存着 v0.8.0 之前的无效组合（被静默忽略=不执行）。
+    就地归一化并写回，幂等；执行时 steps 里还会再归一化兜底。
+    """
+    from .motions import normalize_step_motions
+    fixed = 0
+    for path in TASKS_DIR.glob("*.json"):
+        try:
+            data = _read_json(path)
+            changed = False
+            for step in data.get("steps", []):
+                changed = normalize_step_motions(step) or changed
+            if changed:
+                _write_json(path, data)
+                fixed += 1
+        except Exception as e:
+            logger.warning(f"跳过任务文件 {path.name}: {e}")
+    if fixed:
+        logger.info(f"🕺 已自动修复 {fixed} 个历史任务中的旧动作组合")
 
 
 # ═══════════════════════════════════════════════
