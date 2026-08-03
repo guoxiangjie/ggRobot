@@ -368,7 +368,7 @@ CAPABILITIES = [
         "color": "#4CAF50",
         "params": [
             {"name": "text", "label": "播报文字", "type": "string", "required": True},
-            {"name": "delay", "label": "完成后等待(s)", "type": "number", "default": 0.5},
+            {"name": "delay", "label": "额外等待(s)", "type": "number", "default": 0},
         ],
     },
     {

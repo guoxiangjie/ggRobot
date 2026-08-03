@@ -108,7 +108,7 @@ const STEP_PARAMS: Record<string, ParamDef[]> = {
     { name: 'text', label: '播报文字', type: 'string', required: true },
     { name: 'wait_done', label: '精确等待播完', type: 'switch', default: true, hint: '订阅播放状态事件，语音播完再进入下一步（关闭则仅按下方时长等待）' },
     { name: 'motion_wait', label: '等动作做完', type: 'switch', default: true, hint: '开启：等 TTS 和动作都完成再下一步（取较晚者）；关闭：语音播完即停止动作进入下一步' },
-    { name: 'delay', label: '额外等待(s)', type: 'number', default: 0.5, hint: '播完后额外等待，给表情/动作收尾' },
+    { name: 'delay', label: '额外等待(s)', type: 'number', default: 0, hint: '播完后额外等待，给表情/动作收尾' },
   ],
   wait: [{ name: 'duration', label: '等待时间(s)', type: 'number', default: 2 }],
   motion: [{ name: 'motion_id', label: '动作', type: 'number', required: true, hint: 'motion+area 绑定组合；需 STAND_DEFAULT 模式' }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 1 }],
@@ -137,7 +137,7 @@ const STEP_DEFAULTS: Record<string, Record<string, unknown>> = {
     Object.entries(STEP_PARAMS).map(([type, params]) => [type, Object.fromEntries(params.filter(p => p.default !== undefined).map(p => [p.name, p.default]))])
   ),
   // TTS 节点支持并行挂载多个动作和表情，默认精确等待播完 + 等动作做完
-  tts: { text: '', wait_done: true, motion_wait: true, delay: 0.5, motions: [], emojis: [] },
+  tts: { text: '', wait_done: true, motion_wait: true, delay: 0, motions: [], emojis: [] },
   // 预设动作：motion+area 绑定（默认右手挥手 1002:2）
   motion: { motion_id: 1002, area: 2, delay: 1 },
   // 灵创动作：resource_key + version/type/name（从机器人资源拉取）

@@ -54,7 +54,7 @@ const STEP_PARAMS: Record<string, ParamDef[]> = {
   tts: [
     { name: 'text', label: '播报文字', type: 'string', required: true },
     { name: 'wait_done', label: '精确等待播完', type: 'switch', default: true },
-    { name: 'delay', label: '额外等待(s)', type: 'number', default: 0.5 },
+    { name: 'delay', label: '额外等待(s)', type: 'number', default: 0 },
   ],
   motion: [{ name: 'motion_id', label: '动作', type: 'number', required: true, hint: '需在稳定站立(STAND_DEFAULT)模式下执行；motion+area 为绑定组合' }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 1 }],
   emoji: [{ name: 'emotion_id', label: '表情', type: 'number', required: true }, { name: 'mode', label: '模式', type: 'select', default: 1, options: [{ label: '播放一次', value: 1 }, { label: '循环', value: 2 }] }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 0.5 }],
@@ -79,7 +79,7 @@ const STEP_DEFAULTS: Record<string, Record<string, unknown>> = {
   ...Object.fromEntries(
     Object.entries(STEP_PARAMS).map(([t, ps]) => [t, Object.fromEntries(ps.filter(p => p.default !== undefined).map(p => [p.name, p.default]))])
   ),
-  tts: { text: '', wait_done: true, delay: 0.5, motions: [], emojis: [] },
+  tts: { text: '', wait_done: true, delay: 0, motions: [], emojis: [] },
   motion: { motion_id: 1002, area: 2, delay: 1 },
   linkcraft: { resource_key: '', version: '', resource_type: '', name: '', delay: 2 },
 }
