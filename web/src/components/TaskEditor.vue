@@ -11,6 +11,8 @@ import IconPlus from '~icons/mdi/plus'
 import IconArrowUp from '~icons/mdi/arrow-up'
 import IconArrowDown from '~icons/mdi/arrow-down'
 import IconSettings from '~icons/mdi/cog-outline'
+import IconParallel from '~icons/mdi/call-split'
+import IconBranch from '~icons/mdi/source-branch'
 import IconTts from '~icons/mdi/text-to-speech'
 import IconWait from '~icons/mdi/timer-sand'
 import IconMotion from '~icons/mdi/human-greeting-variant'
@@ -50,7 +52,6 @@ function linkcraftLabel(key: string) {
 
 // ── 步骤类型定义 ──
 interface ParamDef { name: string; label: string; type: string; required?: boolean; default?: unknown; options?: { label: string; value: unknown }[]; hint?: string }
-// 运动模式 action_desc（v0.8.2+ 字符串，非数字ID）
 const MODE_OPTIONS = [
   { label: '稳定站立', value: 'STAND_DEFAULT' },
   { label: '走跑', value: 'LOCOMOTION_DEFAULT' },
@@ -66,7 +67,6 @@ const HTTP_METHOD_OPTIONS = [
   { label: 'DELETE', value: 'DELETE' },
   { label: 'PATCH', value: 'PATCH' },
 ]
-// 表情 ID → 名称（来自 AimDK 文档枚举）
 const EMOJI_OPTIONS = [
   { label: '眨眼', value: 1 },
   { label: '平静', value: 10 },
@@ -137,86 +137,110 @@ const STEP_DEFAULTS: Record<string, Record<string, unknown>> = {
   ...Object.fromEntries(
     Object.entries(STEP_PARAMS).map(([type, params]) => [type, Object.fromEntries(params.filter(p => p.default !== undefined).map(p => [p.name, p.default]))])
   ),
-  // TTS 节点支持并行挂载多个动作和表情，默认精确等待播完 + 等动作做完
   tts: { text: '', wait_done: true, motion_wait: true, delay: 0, motions: [], emojis: [] },
-  // 预设动作：motion+area 绑定（默认右手挥手 1002:2）
   motion: { motion_id: 1002, area: 2, delay: 1 },
-  // 灵创动作：resource_key + version/type/name（从机器人资源拉取）
   linkcraft: { resource_key: '', version: '', resource_type: '', name: '', delay: 2 },
 }
 
 function typeMeta(type: string) { return STEP_TYPES.find(s => s.type === type) || { label: type, icon: IconPlus, color: '#666' } }
 
-// ── 编辑状态（左右布局：左链路 / 右配置）──
+// ═══════════════════════════════════════════
+// 编辑状态：路径化选择（块式嵌套结构）
+// path 约定：
+//   顶层块        → [i]
+//   并行组内步骤   → [i, 分支下标, 步骤下标]
+//   分支块内步骤   → [i, 'then'|'else', 步骤下标]
+// ═══════════════════════════════════════════
+type Path = (number | string)[]
+type Sel =
+  | { kind: 'step'; path: Path }
+  | { kind: 'parallel'; path: Path }
+  | { kind: 'branch'; path: Path }
+type AddTarget =
+  | { kind: 'top' }
+  | { kind: 'parallel'; path: Path; branch: number }
+  | { kind: 'branch'; path: Path; lane: 'then' | 'else' }
+
 const editTask = ref<Task>({ id: '', name: '', desc: '', steps: [] })
-const selectedIndex = ref<number | null>(null)   // 左侧选中的步骤下标
-const stepDraft = ref<TaskStep>({} as TaskStep)  // 右侧配置的工作副本
+const sel = ref<Sel | null>(null)
+const stepDraft = ref<TaskStep>({} as TaskStep)
 const addMenuOpen = ref(false)
-const draftMotions = computed<any[]>(() => ((stepDraft.value as any).motions || []))
-const draftEmojis = computed<number[]>(() => ((stepDraft.value as any).emojis || []))
+const addTarget = ref<AddTarget | null>(null)
+const mountOpen = ref(false)
+const mountMode = ref<'motion' | 'emoji'>('motion')
+const mountMotion = ref<{ kind: 'preset' | 'linkcraft'; motion_id: number; area: number; resource_key: string }>({ kind: 'preset', motion_id: 1002, area: 2, resource_key: '' })
+const mountEmoji = ref<number>(90)
+
+const draftMotions = computed<any[]>(() => (stepDraft.value as any).motions || [])
+const draftEmojis = computed<number[]>(() => (stepDraft.value as any).emojis || [])
+const parallelBlock = computed<any>(() => (sel.value?.kind === 'parallel' ? blockAt(sel.value.path) : null))
+const branchBlock = computed<any>(() => (sel.value?.kind === 'branch' ? blockAt(sel.value.path) : null))
+const parallelBranches = computed<any[]>(() => parallelBlock.value?.branches || [])
+const branchThen = computed<any[]>(() => branchBlock.value?.then || [])
+const branchElse = computed<any[]>(() => branchBlock.value?.else || [])
+const topBlocks = computed<any[]>(() => editTask.value.steps)
+const selPath = computed<Path>(() => sel.value?.path || [])
+
+const COND_PLACEHOLDER = '{{resp.code}} == 1'
+const COND_HINT = '支持 {{var.字段}}、== != > < >= <=、in、contains、and/or/not、括号。示例：{{resp.msg}} contains "成功"'
 
 watch(() => props.task, (t) => {
   editTask.value = JSON.parse(JSON.stringify(t))
-  selectedIndex.value = null
+  sel.value = null
 }, { immediate: true })
 
-// ── 左侧：链路操作 ──
-function selectStep(i: number) {
-  selectedIndex.value = i
-  stepDraft.value = JSON.parse(JSON.stringify(editTask.value.steps[i]))
-}
-
-function addStep(type: string) {
-  editTask.value.steps.push({ type, ...STEP_DEFAULTS[type] })
-  addMenuOpen.value = false
-  selectStep(editTask.value.steps.length - 1)  // 自动选中，右侧打开配置
-}
-
-function deleteStep(index: number) {
-  editTask.value.steps.splice(index, 1)
-  if (selectedIndex.value === index) selectedIndex.value = null
-  else if (selectedIndex.value != null && selectedIndex.value > index) selectedIndex.value--
-}
-
-function moveStep(index: number, dir: -1 | 1) {
-  const target = index + dir
-  if (target < 0 || target >= editTask.value.steps.length) return
-  const arr = editTask.value.steps
-  ;[arr[index], arr[target]] = [arr[target], arr[index]]
-  if (selectedIndex.value === index) selectedIndex.value = target
-  else if (selectedIndex.value === target) selectedIndex.value = index
-}
-
-// ── 右侧：步骤配置 ──
-function applyStep() {
-  if (selectedIndex.value == null) return
-  const data = { ...stepDraft.value }
-  // 灵创动作：根据 resource_key 自动补全 version/resource_type/name
-  if (data.type === 'linkcraft' && data.resource_key) {
-    const r = linkcraftMap.value[data.resource_key as string]
-    if (r) { data.version = r.version; data.resource_type = r.type; data.name = r.name }
+// ── 路径工具 ──
+function blockAt(path: Path): any {
+  let cur: any = editTask.value.steps
+  for (const p of path) {
+    if (cur == null) return null
+    if (Array.isArray(cur)) {
+      cur = cur[p as number]
+    } else if (typeof cur === 'object') {
+      cur = cur[p as string]
+    } else {
+      return null
+    }
   }
-  editTask.value.steps[selectedIndex.value] = data
-  stepDraft.value = data
-  message.success('步骤已更新')
+  return cur
 }
 
-function onLinkcraftChange(key: string) {
-  const r = linkcraftMap.value[key]
-  if (r) {
-    ;(stepDraft.value as any).version = r.version
-    ;(stepDraft.value as any).resource_type = r.type
-    ;(stepDraft.value as any).name = r.name
-  }
+function parentList(path: Path): any[] | null {
+  if (path.length === 1) return editTask.value.steps
+  const parent = blockAt(path.slice(0, -1))
+  if (Array.isArray(parent)) return parent
+  if (parent && Array.isArray(parent.steps)) return parent.steps
+  return null
 }
 
-function stepSummary(step: TaskStep): string {
+function setBlockAt(path: Path, value: any) {
+  const parent = parentList(path)
+  if (parent) parent[path[path.length - 1] as number] = value
+}
+
+function selInside(path: Path) {
+  if (!sel.value || path.length > sel.value.path.length) return false
+  return path.every((p, i) => sel.value!.path[i] === p)
+}
+
+function selectAny(path: Path) {
+  const block = blockAt(path)
+  if (!block) return
+  if (block.type === 'parallel') { sel.value = { kind: 'parallel', path }; return }
+  if (block.type === 'branch') { sel.value = { kind: 'branch', path }; return }
+  sel.value = { kind: 'step', path }
+  stepDraft.value = JSON.parse(JSON.stringify(block))
+}
+
+function stepSummary(step: any): string {
+  if (step.type === 'parallel') return step.name || '并行组'
+  if (step.type === 'branch') return String(step.cond || '条件')
   switch (step.type) {
     case 'tts': {
       const text = `"${(step.text as string || '').slice(0, 20)}${(step.text as string || '').length > 20 ? '...' : ''}"`
       const extras: string[] = []
-      const motions = (step.motions as Array<{ motion_id: number }>) || []
-      const emojis = (step.emojis as number[]) || []
+      const motions = step.motions || []
+      const emojis = step.emojis || []
       if (motions.length) extras.push(`动作×${motions.length}`)
       if (emojis.length) extras.push(`表情×${emojis.length}`)
       return extras.length ? `${text} · ${extras.join(' ')}` : text
@@ -234,12 +258,115 @@ function stepSummary(step: TaskStep): string {
   }
 }
 
-// ── TTS 挂载：动作 / 表情（编辑右侧选中的 tts 步骤）──
-const mountOpen = ref(false)
-const mountMode = ref<'motion' | 'emoji'>('motion')
-const mountMotion = ref<{ kind: 'preset' | 'linkcraft'; motion_id: number; area: number; resource_key: string }>({ kind: 'preset', motion_id: 1002, area: 2, resource_key: '' })
-const mountEmoji = ref<number>(90)
+// ── 块操作 ──
+function addTopBlock(type: string) {
+  if (type === 'parallel') {
+    editTask.value.steps.push({
+      type: 'parallel', name: '并行执行',
+      branches: [
+        { id: 'p1', steps: [{ type: 'wait', duration: 1 }] },
+        { id: 'p2', steps: [{ type: 'emoji', emotion_id: 90 }] },
+      ],
+    })
+    sel.value = { kind: 'parallel', path: [editTask.value.steps.length - 1] }
+  } else if (type === 'branch') {
+    editTask.value.steps.push({
+      type: 'branch', cond: '{{resp.code}} == 1',
+      then: [{ type: 'emoji', emotion_id: 90 }],
+      else: [{ type: 'emoji', emotion_id: 130 }],
+    })
+    sel.value = { kind: 'branch', path: [editTask.value.steps.length - 1] }
+  }
+}
 
+function openAddMenu(target: AddTarget) {
+  addTarget.value = target
+  addMenuOpen.value = true
+}
+
+function addStepOfType(type: string) {
+  const defaults = { type, ...STEP_DEFAULTS[type] }
+  const target = addTarget.value
+  if (!target) return
+  if (target.kind === 'top') {
+    editTask.value.steps.push(defaults)
+    selectAny([editTask.value.steps.length - 1])
+  } else if (target.kind === 'parallel') {
+    const block = blockAt(target.path)
+    const branch = block?.branches?.[target.branch]
+    if (!branch) return
+    if (!branch.steps) branch.steps = []
+    branch.steps.push(defaults)
+    selectAny([...target.path, target.branch, branch.steps.length - 1])
+  } else {
+    const block = blockAt(target.path)
+    if (!block) return
+    const lane = block[target.lane] || []
+    lane.push(defaults)
+    block[target.lane] = lane
+    selectAny([...target.path, target.lane, lane.length - 1])
+  }
+  addMenuOpen.value = false
+}
+
+function deleteAt(path: Path) {
+  const parent = parentList(path)
+  if (!parent) return
+  parent.splice(path[path.length - 1] as number, 1)
+  sel.value = null
+}
+
+function moveAt(path: Path, dir: -1 | 1) {
+  const parent = parentList(path)
+  if (!parent) return
+  const idx = path[path.length - 1] as number
+  const target = idx + dir
+  if (target < 0 || target >= parent.length) return
+  ;[parent[idx], parent[target]] = [parent[target], parent[idx]]
+  if (sel.value) {
+    const sp = sel.value.path
+    const prefix = path.slice(0, -1)
+    if (sp.length === path.length && prefix.every((p, k) => sp[k] === p)) {
+      sel.value = { ...sel.value, path: [...prefix, target] }
+    } else if (path.length === 1 && sp[0] === idx) {
+      sel.value = { ...sel.value, path: [target, ...sp.slice(1)] }
+    }
+  }
+}
+
+function addBranch() {
+  if (!parallelBlock.value) return
+  parallelBlock.value.branches.push({ id: `p${parallelBlock.value.branches.length + 1}`, steps: [] })
+}
+
+function removeBranch(bi: number) {
+  if (!parallelBlock.value) return
+  parallelBlock.value.branches.splice(bi, 1)
+}
+
+// ── 右侧步骤配置 ──
+function applyStep() {
+  if (!sel.value || sel.value.kind !== 'step') return
+  const data = { ...stepDraft.value }
+  if (data.type === 'linkcraft' && data.resource_key) {
+    const r = linkcraftMap.value[data.resource_key as string]
+    if (r) { data.version = r.version; data.resource_type = r.type; data.name = r.name }
+  }
+  setBlockAt(sel.value.path, data)
+  stepDraft.value = data
+  message.success('步骤已更新')
+}
+
+function onLinkcraftChange(key: string) {
+  const r = linkcraftMap.value[key]
+  if (r) {
+    ;(stepDraft.value as any).version = r.version
+    ;(stepDraft.value as any).resource_type = r.type
+    ;(stepDraft.value as any).name = r.name
+  }
+}
+
+// ── TTS 挂载 ──
 function openMount(mode: 'motion' | 'emoji') {
   mountMode.value = mode
   if (mode === 'motion') {
@@ -306,32 +433,107 @@ async function handleSave() {
 
     <!-- 主体：左链路 / 右配置 -->
     <div class="editor-body">
-      <!-- ── 左：链路展示 ── -->
+      <!-- ── 左：链路展示（块式）── -->
       <div class="flow-pane">
         <div class="pane-head">
           <span class="pane-title">任务流程</span>
-          <span class="pane-count">{{ editTask.steps.length }} 步</span>
+          <span class="pane-count">{{ editTask.steps.length }} 块</span>
         </div>
         <NScrollbar class="pane-scroll">
           <div class="steps-list">
             <template v-if="editTask.steps.length">
               <div class="step-marker">▶ 开始</div>
-              <template v-for="(step, i) in editTask.steps" :key="i">
+              <template v-for="(block, i) in topBlocks" :key="i">
                 <div class="connector"></div>
-                <div class="step-card" :class="{ selected: selectedIndex === i }" @click="selectStep(i)">
+
+                <!-- 普通步骤卡片 -->
+                <div
+                  v-if="block.type !== 'parallel' && block.type !== 'branch'"
+                  class="step-card" :class="{ selected: selInside([i]) }"
+                  @click="selectAny([i])"
+                >
                   <div class="step-main">
                     <div class="step-index">{{ i + 1 }}</div>
-                    <div class="step-icon" :style="{ background: typeMeta(step.type).color + '22', color: typeMeta(step.type).color }">
-                      <component :is="typeMeta(step.type).icon" style="font-size:20px" />
+                    <div class="step-icon" :style="{ background: typeMeta(block.type).color + '22', color: typeMeta(block.type).color }">
+                      <component :is="typeMeta(block.type).icon" style="font-size:20px" />
                     </div>
                     <div class="step-body">
-                      <div class="step-type">{{ typeMeta(step.type).label }}</div>
-                      <div class="step-desc">{{ stepSummary(step) }}</div>
+                      <div class="step-type">{{ typeMeta(block.type).label }}</div>
+                      <div class="step-desc">{{ stepSummary(block) }}</div>
                     </div>
                     <div class="step-actions" @click.stop>
-                      <NButton size="tiny" text :disabled="i === 0" @click="moveStep(i, -1)"><IconArrowUp /></NButton>
-                      <NButton size="tiny" text :disabled="i === editTask.steps.length - 1" @click="moveStep(i, 1)"><IconArrowDown /></NButton>
-                      <NButton size="tiny" text type="error" @click="deleteStep(i)"><IconDelete /></NButton>
+                      <NButton size="tiny" text :disabled="i === 0" @click="moveAt([i], -1)"><IconArrowUp /></NButton>
+                      <NButton size="tiny" text :disabled="i === editTask.steps.length - 1" @click="moveAt([i], 1)"><IconArrowDown /></NButton>
+                      <NButton size="tiny" text type="error" @click="deleteAt([i])"><IconDelete /></NButton>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 并行组卡片 -->
+                <div
+                  v-else-if="block.type === 'parallel'"
+                  class="block-card parallel-card" :class="{ selected: selInside([i]) }"
+                >
+                  <div class="block-head" @click="sel = { kind: 'parallel', path: [i] }">
+                    <span class="block-badge"><IconParallel style="font-size:14px" /> 并行</span>
+                    <span class="block-name">{{ block.name || '并行执行' }}</span>
+                    <span class="block-count">{{ (block.branches || []).length }} 分支</span>
+                  </div>
+                  <div class="branch-row">
+                    <div v-for="(b, bi) in (block.branches || [])" :key="bi" class="branch-col">
+                      <div class="branch-label">分支 {{ Number(bi) + 1 }}</div>
+                      <div
+                        v-for="(s, si) in (b.steps || [])" :key="si"
+                        class="mini-card" :class="{ selected: selInside([i, bi, si]) }"
+                        @click.stop="selectAny([i, bi, si])"
+                      >
+                        <span class="mini-icon" :style="{ color: typeMeta(s.type).color }">
+                          <component :is="typeMeta(s.type).icon" style="font-size:16px" />
+                        </span>
+                        <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
+                      </div>
+                      <div v-if="!(b.steps || []).length" class="branch-empty">（空分支）</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 分支块卡片 -->
+                <div
+                  v-else
+                  class="block-card branch-card" :class="{ selected: selInside([i]) }"
+                >
+                  <div class="block-head" @click="sel = { kind: 'branch', path: [i] }">
+                    <span class="block-badge branch-badge"><IconBranch style="font-size:14px" /> 分支</span>
+                    <code class="block-cond">{{ block.cond }}</code>
+                  </div>
+                  <div class="lane-row">
+                    <div class="lane">
+                      <div class="lane-label yes">是</div>
+                      <div
+                        v-for="(s, si) in (block.then || [])" :key="si"
+                        class="mini-card" :class="{ selected: selInside([i, 'then', si]) }"
+                        @click.stop="selectAny([i, 'then', si])"
+                      >
+                        <span class="mini-icon" :style="{ color: typeMeta(s.type).color }">
+                          <component :is="typeMeta(s.type).icon" style="font-size:16px" />
+                        </span>
+                        <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
+                      </div>
+                      <div v-if="!(block.then || []).length" class="branch-empty">空</div>
+                    </div>
+                    <div class="lane">
+                      <div class="lane-label no">否</div>
+                      <div
+                        v-for="(s, si) in (block.else || [])" :key="si"
+                        class="mini-card" :class="{ selected: selInside([i, 'else', si]) }"
+                        @click.stop="selectAny([i, 'else', si])"
+                      >
+                        <span class="mini-icon" :style="{ color: typeMeta(s.type).color }">
+                          <component :is="typeMeta(s.type).icon" style="font-size:16px" />
+                        </span>
+                        <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
+                      </div>
+                      <div v-if="!(block.else || []).length" class="branch-empty">空</div>
                     </div>
                   </div>
                 </div>
@@ -343,21 +545,32 @@ async function handleSave() {
           </div>
         </NScrollbar>
         <div class="flow-add">
-          <NButton dashed block size="small" @click="addMenuOpen = true">
+          <NButton dashed block size="small" @click="openAddMenu({ kind: 'top' })">
             <template #icon><IconPlus /></template>
-            添加步骤
+            步骤
           </NButton>
+          <div class="flow-add-row">
+            <NButton dashed size="small" @click="addTopBlock('parallel')">
+              <template #icon><IconParallel /></template>
+              并行组
+            </NButton>
+            <NButton dashed size="small" @click="addTopBlock('branch')">
+              <template #icon><IconBranch /></template>
+              分支
+            </NButton>
+          </div>
         </div>
       </div>
 
       <!-- ── 右：配置区域 ── -->
       <div class="config-pane">
-        <template v-if="selectedIndex != null">
+        <!-- 步骤配置 -->
+        <template v-if="sel && sel.kind === 'step'">
           <div class="pane-head config-head">
             <NTag :color="{ color: typeMeta(stepDraft.type).color, textColor: '#fff' }" size="small">
               {{ typeMeta(stepDraft.type).label }}
             </NTag>
-            <span class="pane-count">步骤 {{ selectedIndex + 1 }} / {{ editTask.steps.length }}</span>
+            <span class="pane-count">步骤配置</span>
           </div>
           <NScrollbar class="pane-scroll">
             <div class="config-form">
@@ -375,8 +588,7 @@ async function handleSave() {
                     <NSelect
                       v-else-if="param.name === 'resource_key'"
                       v-model:value="(stepDraft as any)[param.name]"
-                      size="small"
-                      filterable
+                      size="small" filterable
                       :options="linkcraftOptions"
                       :placeholder="linkcraftResources.length ? '选择灵创动作' : '未获取到动作（机器人离线或无资源）'"
                       @update:value="onLinkcraftChange"
@@ -384,16 +596,14 @@ async function handleSave() {
                     <NSelect
                       v-else-if="param.name === 'motion_id'"
                       :value="motionKey(Number((stepDraft as any).motion_id) || 0, Number((stepDraft as any).area) || 0)"
-                      size="small"
-                      filterable
+                      size="small" filterable
                       :options="MOTION_OPTIONS"
                       @update:value="(v: string) => { const c = parseMotionKey(v); (stepDraft as any).motion_id = c.motion; (stepDraft as any).area = c.area }"
                     />
                     <NSelect
                       v-else-if="param.name === 'emotion_id'"
                       v-model:value="(stepDraft as any)[param.name]"
-                      size="small"
-                      filterable
+                      size="small" filterable
                       :options="EMOJI_OPTIONS"
                     />
                     <NInputNumber v-else-if="param.type === 'number'" v-model:value="(stepDraft as any)[param.name]" size="small" :step="0.1" style="width:100%" />
@@ -408,36 +618,23 @@ async function handleSave() {
                 </div>
               </template>
 
-              <!-- TTS 挂载区：并行动作 / 表情 -->
+              <!-- TTS 并行挂载 -->
               <template v-if="stepDraft.type === 'tts'">
                 <div class="form-row">
-                  <span class="form-label">并行挂载</span>
+                  <span class="form-label">并行挂载（旧式）</span>
                   <div class="mount-zone">
-                    <div
-                      v-for="(m, mi) in draftMotions" :key="'m'+mi"
-                      class="mount-item"
-                      :class="m.kind === 'linkcraft' ? 'linkcraft-item' : 'motion-item'"
-                    >
+                    <div v-for="(m, mi) in draftMotions" :key="'m'+mi" class="mount-item" :class="m.kind === 'linkcraft' ? 'linkcraft-item' : 'motion-item'">
                       <span v-if="m.kind === 'linkcraft'" class="mount-tag-text">{{ linkcraftLabel(m.resource_key) }}</span>
                       <span v-else class="mount-tag-text">{{ motionLabel(Number(m.motion_id), Number(m.area)) }}</span>
                       <NButton size="tiny" text type="error" @click="removeMount('motion', mi)">✕</NButton>
                     </div>
-                    <div
-                      v-for="(e, ei) in draftEmojis" :key="'e'+ei"
-                      class="mount-item emoji-item"
-                    >
+                    <div v-for="(e, ei) in draftEmojis" :key="'e'+ei" class="mount-item emoji-item">
                       <span class="mount-tag-text">{{ emojiLabel(e) }}</span>
                       <NButton size="tiny" text type="error" @click="removeMount('emoji', ei)">✕</NButton>
                     </div>
                     <div class="mount-buttons">
-                      <NButton size="tiny" dashed @click="openMount('motion')">
-                        <template #icon><IconPlus /></template>
-                        动作
-                      </NButton>
-                      <NButton size="tiny" dashed @click="openMount('emoji')">
-                        <template #icon><IconPlus /></template>
-                        表情
-                      </NButton>
+                      <NButton size="tiny" dashed @click="openMount('motion')"><template #icon><IconPlus /></template>动作</NButton>
+                      <NButton size="tiny" dashed @click="openMount('emoji')"><template #icon><IconPlus /></template>表情</NButton>
                     </div>
                   </div>
                 </div>
@@ -445,21 +642,99 @@ async function handleSave() {
             </div>
           </NScrollbar>
           <div class="config-footer">
-            <NButton size="small" type="error" secondary @click="deleteStep(selectedIndex)">
-              <template #icon><IconDelete /></template>
-              删除步骤
+            <NButton size="small" type="error" secondary @click="deleteAt(sel.path)">
+              <template #icon><IconDelete /></template>删除步骤
             </NButton>
             <NButton size="small" type="primary" @click="applyStep">
-              <template #icon><IconContentSave /></template>
-              应用到步骤
+              <template #icon><IconContentSave /></template>应用到步骤
             </NButton>
           </div>
         </template>
 
+        <!-- 并行组配置 -->
+        <template v-else-if="sel && sel.kind === 'parallel'">
+          <div class="pane-head config-head">
+            <span class="block-badge"><IconParallel style="font-size:14px" /> 并行组</span>
+            <NInput v-model:value="parallelBlock.name" size="small" placeholder="并行组名称" style="width:160px" />
+          </div>
+          <NScrollbar class="pane-scroll">
+            <div class="config-form">
+              <p class="config-tip">所有分支同时执行，全部完成后进入下一步。每个分支可包含多个步骤（分支内顺序执行）。</p>
+              <div v-for="(b, bi) in parallelBranches" :key="bi" class="branch-box">
+                <div class="branch-box-head">
+                  <span class="pane-title">分支 {{ Number(bi) + 1 }}</span>
+                  <NButton size="tiny" text type="error" @click="removeBranch(bi)"><IconDelete /></NButton>
+                </div>
+                <div v-for="(s, si) in (b.steps || [])" :key="si" class="mini-card" :class="{ selected: selInside([...selPath, bi, si]) }" @click="selectAny([...selPath, bi, si])">
+                  <span class="mini-icon" :style="{ color: typeMeta(s.type).color }"><component :is="typeMeta(s.type).icon" style="font-size:16px" /></span>
+                  <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
+                  <span class="mini-actions" @click.stop>
+                    <NButton size="tiny" text :disabled="si === 0" @click="moveAt([...selPath, bi, si], -1)"><IconArrowUp /></NButton>
+                    <NButton size="tiny" text :disabled="si === (b.steps || []).length - 1" @click="moveAt([...selPath, bi, si], 1)"><IconArrowDown /></NButton>
+                    <NButton size="tiny" text type="error" @click="deleteAt([...selPath, bi, si])"><IconDelete /></NButton>
+                  </span>
+                </div>
+                <div v-if="!(b.steps || []).length" class="branch-empty">空分支</div>
+                <NButton size="tiny" dashed block @click="openAddMenu({ kind: 'parallel', path: selPath, branch: bi })">
+                  <template #icon><IconPlus /></template>分支内添加步骤
+                </NButton>
+              </div>
+              <NButton size="small" dashed block @click="addBranch">
+                <template #icon><IconPlus /></template>添加分支
+              </NButton>
+            </div>
+          </NScrollbar>
+        </template>
+
+        <!-- 分支块配置 -->
+        <template v-else-if="sel && sel.kind === 'branch'">
+          <div class="pane-head config-head">
+            <span class="block-badge branch-badge"><IconBranch style="font-size:14px" /> 分支</span>
+            <NButton size="tiny" text type="error" @click="deleteAt(sel.path)"><IconDelete /></NButton>
+          </div>
+          <NScrollbar class="pane-scroll">
+            <div class="config-form">
+              <div class="form-row">
+                <span class="form-label">条件表达式</span>
+                <NInput v-model:value="branchBlock.cond" size="small" :placeholder="COND_PLACEHOLDER" />
+                <span class="form-hint">{{ COND_HINT }}</span>
+              </div>
+              <div class="lane-box">
+                <div class="lane-box-head"><span class="lane-label yes">是（then）</span></div>
+                <div v-for="(s, si) in branchThen" :key="si" class="mini-card" :class="{ selected: selInside([...selPath, 'then', si]) }" @click="selectAny([...selPath, 'then', si])">
+                  <span class="mini-icon" :style="{ color: typeMeta(s.type).color }"><component :is="typeMeta(s.type).icon" style="font-size:16px" /></span>
+                  <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
+                  <span class="mini-actions" @click.stop>
+                    <NButton size="tiny" text type="error" @click="deleteAt([...selPath, 'then', si])"><IconDelete /></NButton>
+                  </span>
+                </div>
+                <div v-if="!branchThen.length" class="branch-empty">空</div>
+                <NButton size="tiny" dashed block @click="openAddMenu({ kind: 'branch', path: selPath, lane: 'then' })">
+                  <template #icon><IconPlus /></template>是：添加步骤
+                </NButton>
+              </div>
+              <div class="lane-box">
+                <div class="lane-box-head"><span class="lane-label no">否（else）</span></div>
+                <div v-for="(s, si) in branchElse" :key="si" class="mini-card" :class="{ selected: selInside([...selPath, 'else', si]) }" @click="selectAny([...selPath, 'else', si])">
+                  <span class="mini-icon" :style="{ color: typeMeta(s.type).color }"><component :is="typeMeta(s.type).icon" style="font-size:16px" /></span>
+                  <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
+                  <span class="mini-actions" @click.stop>
+                    <NButton size="tiny" text type="error" @click="deleteAt([...selPath, 'else', si])"><IconDelete /></NButton>
+                  </span>
+                </div>
+                <div v-if="!branchElse.length" class="branch-empty">空</div>
+                <NButton size="tiny" dashed block @click="openAddMenu({ kind: 'branch', path: selPath, lane: 'else' })">
+                  <template #icon><IconPlus /></template>否：添加步骤
+                </NButton>
+              </div>
+            </div>
+          </NScrollbar>
+        </template>
+
         <div v-else class="config-empty">
           <IconSettings style="font-size: 40px; opacity: 0.25;" />
-          <p>点击左侧步骤卡片，在此配置参数</p>
-          <p class="config-empty-sub">或点"添加步骤"开始编排</p>
+          <p>点击左侧步骤/并行组/分支进行配置</p>
+          <p class="config-empty-sub">并行组可"边走边说"，分支可按接口返回值分路</p>
         </div>
       </div>
     </div>
@@ -467,11 +742,7 @@ async function handleSave() {
     <!-- 添加菜单 -->
     <NModal v-model:show="addMenuOpen" preset="card" title="选择步骤类型" style="width:480px">
       <div class="type-grid">
-        <div
-          v-for="t in STEP_TYPES" :key="t.type"
-          class="type-item"
-          @click="addStep(t.type)"
-        >
+        <div v-for="t in STEP_TYPES" :key="t.type" class="type-item" @click="addStepOfType(t.type)">
           <div class="type-icon" :style="{ background: t.color + '22', color: t.color }">
             <component :is="t.icon" style="font-size:24px" />
           </div>
@@ -481,12 +752,7 @@ async function handleSave() {
     </NModal>
 
     <!-- 挂载编辑（动作/表情） -->
-    <NModal
-      v-model:show="mountOpen"
-      preset="card"
-      :title="mountMode === 'motion' ? '添加并行动作' : '添加并行表情'"
-      style="width:380px"
-    >
+    <NModal v-model:show="mountOpen" preset="card" :title="mountMode === 'motion' ? '添加并行动作' : '添加并行表情'" style="width:380px">
       <div style="display:flex;flex-direction:column;gap:14px">
         <template v-if="mountMode === 'motion'">
           <div class="form-row">
@@ -505,11 +771,7 @@ async function handleSave() {
           <template v-else>
             <div class="form-row">
               <span class="form-label">动作</span>
-              <NSelect
-                :value="motionKey(mountMotion.motion_id, mountMotion.area)"
-                size="small" filterable :options="MOTION_OPTIONS"
-                @update:value="(v: string) => { const c = parseMotionKey(v); mountMotion.motion_id = c.motion; mountMotion.area = c.area }"
-              />
+              <NSelect :value="motionKey(mountMotion.motion_id, mountMotion.area)" size="small" filterable :options="MOTION_OPTIONS" @update:value="(v: string) => { const c = parseMotionKey(v); mountMotion.motion_id = c.motion; mountMotion.area = c.area }" />
             </div>
           </template>
         </template>
@@ -521,10 +783,7 @@ async function handleSave() {
         </template>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
           <NButton size="small" @click="mountOpen = false">取消</NButton>
-          <NButton size="small" type="primary" @click="saveMount">
-            <template #icon><IconPlus /></template>
-            添加
-          </NButton>
+          <NButton size="small" type="primary" @click="saveMount"><template #icon><IconPlus /></template>添加</NButton>
         </div>
       </div>
     </NModal>
@@ -532,21 +791,16 @@ async function handleSave() {
 </template>
 
 <style scoped>
-.editor { display: flex; flex-direction: column; height: 660px; }
+.editor { display: flex; flex-direction: column; height: 680px; }
 
 /* ── 顶部 ── */
 .editor-top { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
 
 /* ── 左右主体 ── */
 .editor-body { flex: 1; display: flex; gap: 14px; min-height: 0; }
-
-.flow-pane, .config-pane {
-  display: flex; flex-direction: column; min-height: 0;
-  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
-}
-.flow-pane { width: 44%; flex-shrink: 0; }
+.flow-pane, .config-pane { display: flex; flex-direction: column; min-height: 0; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.flow-pane { width: 46%; flex-shrink: 0; }
 .config-pane { flex: 1; }
-
 .pane-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
 .pane-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
 .pane-count { font-size: 11px; color: var(--text-secondary); opacity: 0.8; font-family: 'JetBrains Mono', monospace; }
@@ -555,28 +809,15 @@ async function handleSave() {
 
 /* ── 左：链路 ── */
 .steps-list { display: flex; flex-direction: column; align-items: center; padding: 14px; }
-
-.step-marker {
-  padding: 4px 16px; border-radius: 16px; font-size: 11px; font-weight: 700;
-  background: #1a3a1a; border: 1px solid #3cc98e; color: #3cc98e;
-}
+.step-marker { padding: 4px 16px; border-radius: 16px; font-size: 11px; font-weight: 700; background: #1a3a1a; border: 1px solid #3cc98e; color: #3cc98e; }
 .step-marker.end { background: #1a1a2a; border-color: #4da6ff; color: #4da6ff; }
-.connector { width: 2px; height: 14px; background: var(--border); }
+.connector { width: 2px; height: 12px; background: var(--border); }
 
-.step-card {
-  display: flex; flex-direction: column; gap: 8px; width: 100%;
-  padding: 10px 12px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); cursor: pointer; transition: all 0.15s;
-}
+.step-card { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }
 .step-card:hover { border-color: var(--accent); background: rgba(77,166,255,0.04); }
 .step-card.selected { border-color: var(--accent); background: rgba(77,166,255,0.08); box-shadow: 0 0 10px rgba(77,166,255,0.12); }
-
 .step-main { display: flex; align-items: center; gap: 12px; width: 100%; }
-.step-index {
-  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
-  background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; color: var(--text-secondary);
-}
+.step-index { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-secondary); }
 .step-icon { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .step-body { flex: 1; min-width: 0; }
 .step-type { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
@@ -584,24 +825,54 @@ async function handleSave() {
 .step-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0.55; transition: opacity 0.15s; }
 .step-card:hover .step-actions { opacity: 1; }
 
-.flow-add { padding: 10px 12px; border-top: 1px solid var(--border); }
+/* 块卡片（并行/分支） */
+.block-card { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.block-card.selected { border-color: var(--accent); box-shadow: 0 0 10px rgba(77,166,255,0.12); }
+.block-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.block-head:hover { background: rgba(77,166,255,0.05); }
+.block-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; background: rgba(33,150,243,0.15); color: #64b5f6; border: 1px solid rgba(33,150,243,0.3); }
+.branch-badge { background: rgba(38,166,154,0.15); color: #4db6ac; border-color: rgba(38,166,154,0.3); }
+.block-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.block-cond { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+.block-count { margin-left: auto; font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+
+.branch-row { display: flex; gap: 8px; padding: 10px 12px; }
+.branch-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.branch-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+.branch-empty { font-size: 11px; color: var(--text-secondary); opacity: 0.5; text-align: center; padding: 8px 0; border: 1px dashed var(--border); border-radius: 6px; }
+
+.lane-row { display: flex; gap: 8px; padding: 10px 12px; }
+.lane { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; border-top: 2px solid transparent; }
+.lane-label { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; align-self: flex-start; }
+.lane-label.yes { background: rgba(60,201,142,0.15); color: #3cc98e; }
+.lane-label.no { background: rgba(244,75,75,0.15); color: #f44b4b; }
+
+.mini-card { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: rgba(0,0,0,0.18); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: all 0.12s; }
+.mini-card:hover { border-color: var(--accent); }
+.mini-card.selected { border-color: var(--accent); background: rgba(77,166,255,0.08); }
+.mini-icon { flex-shrink: 0; display: flex; }
+.mini-text { font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-actions { margin-left: auto; display: flex; gap: 0; opacity: 0.55; }
+.mini-card:hover .mini-actions { opacity: 1; }
+
+.flow-add { padding: 10px 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.flow-add-row { display: flex; gap: 8px; }
+.flow-add-row .n-button { flex: 1; }
 
 /* ── 右：配置 ── */
 .config-form { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
-.config-empty {
-  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 10px; color: var(--text-secondary); font-size: 13px;
-}
+.config-tip { margin: 0; font-size: 12px; color: var(--text-secondary); opacity: 0.8; line-height: 1.6; }
+.config-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-secondary); font-size: 13px; }
 .config-empty p { margin: 0; }
 .config-empty-sub { font-size: 11px; opacity: 0.7; }
 .config-footer { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); }
 
+.branch-box, .lane-box { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: rgba(0,0,0,0.12); border: 1px solid var(--border); border-radius: var(--radius); }
+.branch-box-head { display: flex; align-items: center; justify-content: space-between; }
+.lane-box-head { display: flex; align-items: center; }
+
 /* ── TTS 挂载区 ── */
-.mount-zone {
-  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-  padding: 8px 10px; background: rgba(0,0,0,0.18); border: 1px dashed var(--border);
-  border-radius: 6px;
-}
+.mount-zone { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; background: rgba(0,0,0,0.18); border: 1px dashed var(--border); border-radius: 6px; }
 .mount-item { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .motion-item { background: rgba(255,152,0,0.14); color: #ffb74d; border: 1px solid rgba(255,152,0,0.3); }
 .linkcraft-item { background: rgba(0,172,193,0.14); color: #4dd0e1; border: 1px solid rgba(0,172,193,0.3); }
@@ -611,11 +882,7 @@ async function handleSave() {
 
 /* ── 添加菜单 ── */
 .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.type-item {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 16px 8px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); cursor: pointer; transition: all 0.15s;
-}
+.type-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }
 .type-item:hover { border-color: var(--accent); transform: translateY(-1px); }
 .type-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
 .type-label { font-size: 12px; }
