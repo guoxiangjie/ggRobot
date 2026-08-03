@@ -78,6 +78,7 @@ async def delete_task(task_id: str):
 async def run_task(task_id: str):
     from ..task.store import get_task
     from ..task.engine import get_engine
+    from ..task.validate import validate_task
     from .. import node as node_mod
 
     task = get_task(task_id)
@@ -87,6 +88,11 @@ async def run_task(task_id: str):
         return {"ok": False, "error": "后端未初始化"}
     if node_mod._cmd_queue is None:
         return {"ok": False, "error": "命令队列未就绪"}
+
+    # 运行前校验（并行组冲突等），提前拒绝而不是执行到一半
+    errors = validate_task(task)
+    if errors:
+        return {"ok": False, "error": "；".join(errors)}
 
     engine = get_engine()
     if engine.state.running:
