@@ -187,6 +187,40 @@ onBeforeUnmount(stopStatePolling)
       <TtsPanel />
       <MotionPanel />
       <VolumePanel />
+
+      <!-- 开发者模式（系统级 · 高危）：放在音量面板右侧 -->
+      <div class="dev-card-wrap">
+        <div class="dev-head">
+          <span class="dev-title">⚠ 开发者模式（系统级 · 高危）</span>
+          <div class="dev-state">
+            <span class="dev-cap">当前</span>
+            <NTag :type="stateTagType(currentDevState)" size="small" round>
+              {{ stateLabel(currentDevState) || '未知' }}
+            </NTag>
+          </div>
+        </div>
+        <div v-if="inDevMode" class="dev-warn">
+          ⚠ 机器人处于开发者模式（{{ stateLabel(currentDevState) }}），部分原生能力已停用。完成开发后请切回 Ready 或重启。
+        </div>
+        <div class="dev-row">
+          <NSelect
+            v-model:value="selectedState"
+            :options="devOptions"
+            size="small"
+            placeholder="选择目标模式"
+            style="flex: 1; min-width: 220px;"
+          />
+          <NButton
+            size="small"
+            type="warning"
+            :loading="migrating"
+            :disabled="!selectedState || selectedState === currentDevState || migrating"
+            @click="openConfirm"
+          >切换</NButton>
+          <NButton size="small" quaternary :loading="migrating" @click="refreshDevState">刷新</NButton>
+        </div>
+        <p class="dev-hint">Develop_MC 会停用原生运动控制，机器人可能摔倒；Develop_Nav 停用自主导航/感知。完成后务必切回 Ready。</p>
+      </div>
     </div>
 
     <!-- 遥控 + 模式 同行 -->
@@ -268,38 +302,6 @@ onBeforeUnmount(stopStatePolling)
           <span v-else>确认切换到「{{ m.label }}」模式？</span>
         </NPopconfirm>
       </div>
-    </div>
-
-    <!-- 开发者模式（系统级·高危）-->
-    <div class="section-label dev-section-label">⚠ 开发者模式（系统级 · 高危）</div>
-    <div v-if="inDevMode" class="dev-warn">
-      ⚠ 机器人处于开发者模式（{{ stateLabel(currentDevState) }}），部分原生能力已停用。完成开发后请切回 Ready 或重启。
-    </div>
-    <div class="dev-card">
-      <div class="dev-row">
-        <div class="dev-state">
-          <span class="dev-cap">当前</span>
-          <NTag :type="stateTagType(currentDevState)" size="small" round>
-            {{ stateLabel(currentDevState) || '未知' }}
-          </NTag>
-        </div>
-        <NSelect
-          v-model:value="selectedState"
-          :options="devOptions"
-          size="small"
-          placeholder="选择目标模式"
-          style="width: 320px;"
-        />
-        <NButton
-          size="small"
-          type="warning"
-          :loading="migrating"
-          :disabled="!selectedState || selectedState === currentDevState || migrating"
-          @click="openConfirm"
-        >切换</NButton>
-        <NButton size="small" quaternary :loading="migrating" @click="refreshDevState">刷新</NButton>
-      </div>
-      <p class="dev-hint">Develop_MC 会停用原生运动控制，机器人可能摔倒；Develop_Nav 停用自主导航/感知。完成后务必切回 Ready。</p>
     </div>
 
     <!-- 确认弹窗（分级：低危普通提示 / 中危红字警告 / MC 强制输入"MC"）-->
@@ -422,16 +424,18 @@ onBeforeUnmount(stopStatePolling)
 .dpad-note { margin-top: 8px; font-size: 11px; color: var(--text-muted, #556270); }
 
 /* ── 开发者模式 ── */
-.dev-section-label { color: var(--danger); }
+.dev-card-wrap {
+  grid-column: span 2;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+}
+.dev-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.dev-title { font-size: 14px; font-weight: 600; color: var(--danger); }
 .dev-warn {
   margin-bottom: 10px; padding: 8px 12px;
   background: rgba(244, 75, 75, 0.1); border: 1px solid rgba(244, 75, 75, 0.3);
   border-radius: var(--radius);
   color: var(--danger); font-size: 13px;
-}
-.dev-card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px;
 }
 .dev-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .dev-state { display: flex; align-items: center; gap: 8px; }
