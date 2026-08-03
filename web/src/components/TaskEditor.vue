@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import {
-  NButton, NInput, NModal, NSelect, NTag, NInputNumber, NDivider,
+  NButton, NInput, NModal, NSelect, NTag, NInputNumber,
   NScrollbar, NEmpty, NRadioGroup, NRadioButton, NSwitch, useMessage,
 } from 'naive-ui'
 import { saveTask, type Task, type TaskStep } from '@/api/fastapi'
@@ -283,24 +283,24 @@ async function handleSave() {
   <div class="editor">
     <!-- 顶部信息 -->
     <div class="editor-meta">
-      <NInput v-model:value="editTask.name" placeholder="任务名称" size="small" style="width:200px" />
-      <NInput v-model:value="editTask.desc" placeholder="任务描述" size="small" style="flex:1;min-width:200px" />
-      <NDivider vertical />
-      <span class="meta-count">{{ editTask.steps.length }} 步</span>
-      <NButton size="small" type="primary" @click="handleSave">
-        <template #icon><IconContentSave /></template>
-        保存
-      </NButton>
+      <NInput v-model:value="editTask.name" placeholder="任务名称（必填）" size="small" />
+      <NInput v-model:value="editTask.desc" placeholder="任务描述（可选）" size="small" />
     </div>
 
     <!-- 步骤列表 -->
     <div class="steps-container">
-      <NScrollbar style="max-height:520px">
+      <div class="steps-head">
+        <span class="steps-title">步骤（{{ editTask.steps.length }}）</span>
+        <NButton size="small" type="primary" @click="handleSave">
+          <template #icon><IconContentSave /></template>
+          保存
+        </NButton>
+      </div>
+      <NScrollbar style="max-height:520px; flex:1;">
         <div class="steps-list">
-          <!-- START 标记 -->
-          <div class="step-marker">▶ 开始</div>
-
           <template v-if="editTask.steps.length">
+            <!-- START 标记 -->
+            <div class="step-marker">▶ 开始</div>
             <template v-for="(step, i) in editTask.steps" :key="i">
               <!-- 连接线 -->
               <div class="connector"></div>
@@ -506,11 +506,12 @@ async function handleSave() {
 <style scoped>
 .editor { display: flex; flex-direction: column; height: 600px; }
 
-.editor-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-.meta-count { font-size: 12px; color: var(--text-secondary); }
+.editor-meta { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 
-.steps-container { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-.steps-list { display: flex; flex-direction: column; align-items: center; }
+.steps-container { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.steps-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.steps-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.steps-list { display: flex; flex-direction: column; align-items: center; padding: 16px; }
 
 .step-marker {
   padding: 4px 16px; border-radius: 16px; font-size: 11px; font-weight: 700;
