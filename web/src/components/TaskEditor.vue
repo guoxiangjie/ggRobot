@@ -839,7 +839,7 @@ async function handleSave() {
 .step-marker.end { background: #1a1a2a; border-color: #4da6ff; color: #4da6ff; }
 .connector { width: 2px; height: 12px; background: var(--border); }
 
-.step-card { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }
+.step-card { display: flex; flex-direction: column; gap: 8px; width: 100%; box-sizing: border-box; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }
 .step-card:hover { border-color: var(--accent); background: rgba(77,166,255,0.04); }
 .step-card.selected { border-color: var(--accent); background: rgba(77,166,255,0.08); box-shadow: 0 0 10px rgba(77,166,255,0.12); }
 .step-main { display: flex; align-items: center; gap: 12px; width: 100%; }
@@ -852,7 +852,7 @@ async function handleSave() {
 .step-card:hover .step-actions { opacity: 1; }
 
 /* 块卡片（并行/分支） */
-.block-card { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.block-card { width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .block-card.selected { border-color: var(--accent); box-shadow: 0 0 10px rgba(77,166,255,0.12); }
 .block-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
 .block-head:hover { background: rgba(77,166,255,0.05); }

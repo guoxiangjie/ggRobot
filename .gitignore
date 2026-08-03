@@ -23,3 +23,6 @@ log/
 # 大资产（二进制不入 git；STL 原始副本在 ~/Downloads/X2_URDF-v1.3.0/meshes）
 web/public/meshes/
 *.glb
+
+# 本地运行产生的用户数据（任务/项目等，勿入 git）
+ggRobot-data/
