@@ -388,7 +388,7 @@ async function handleSave() {
     </NModal>
 
     <!-- 步骤参数编辑 -->
-    <NModal v-model:show="stepEditOpen" preset="card" title="编辑步骤" style="width:440px">
+    <NModal v-model:show="stepEditOpen" preset="card" title="编辑步骤" style="width:480px">
       <div style="display:flex;flex-direction:column;gap:14px">
         <div class="form-row" style="flex-direction:row;align-items:center;gap:8px">
           <NTag :color="{ color: typeMeta(stepEditData.type).color, textColor: '#fff' }" size="small">
@@ -396,40 +396,47 @@ async function handleSave() {
           </NTag>
         </div>
         <template v-for="param in STEP_PARAMS[stepEditData.type as string] || []" :key="param.name">
-          <div class="form-row">
-            <span class="form-label">{{ param.label }}</span>
-            <NInput v-if="param.type === 'string' && param.name !== 'resource_key'" v-model:value="(stepEditData as any)[param.name]" size="small" type="textarea" :autosize="{ minRows: 1, maxRows: 3 }" />
-            <NSelect
-              v-else-if="param.name === 'resource_key'"
-              v-model:value="(stepEditData as any)[param.name]"
-              size="small"
-              filterable
-              :options="linkcraftOptions"
-              :placeholder="linkcraftResources.length ? '选择灵创动作' : '未获取到动作（机器人离线或无资源）'"
-            />
-            <NSelect
-              v-else-if="param.name === 'motion_id'"
-              :value="motionKey(Number((stepEditData as any).motion_id) || 0, Number((stepEditData as any).area) || 0)"
-              size="small"
-              filterable
-              :options="MOTION_OPTIONS"
-              @update:value="(v: string) => { const c = parseMotionKey(v); (stepEditData as any).motion_id = c.motion; (stepEditData as any).area = c.area }"
-            />
-            <NSelect
-              v-else-if="param.name === 'emotion_id'"
-              v-model:value="(stepEditData as any)[param.name]"
-              size="small"
-              filterable
-              :options="EMOJI_OPTIONS"
-            />
-            <NInputNumber v-else-if="param.type === 'number'" v-model:value="(stepEditData as any)[param.name]" size="small" :step="0.1" style="width:100%" />
-            <NSwitch v-else-if="param.type === 'switch'" v-model:value="(stepEditData as any)[param.name]" />
-            <NSelect
-              v-else-if="param.type === 'select'"
-              v-model:value="(stepEditData as any)[param.name]"
-              size="small"
-              :options="(param.options || []).map((o: any) => ({ label: o.label, value: o.value }))"
-            />
+          <div class="form-row" :class="{ 'switch-row': param.type === 'switch' }">
+            <template v-if="param.type === 'switch'">
+              <div class="switch-line">
+                <span class="form-label">{{ param.label }}</span>
+                <NSwitch v-model:value="(stepEditData as any)[param.name]" />
+              </div>
+            </template>
+            <template v-else>
+              <span class="form-label">{{ param.label }}</span>
+              <NInput v-if="param.type === 'string' && param.name !== 'resource_key'" v-model:value="(stepEditData as any)[param.name]" size="small" type="textarea" :autosize="{ minRows: 1, maxRows: 3 }" />
+              <NSelect
+                v-else-if="param.name === 'resource_key'"
+                v-model:value="(stepEditData as any)[param.name]"
+                size="small"
+                filterable
+                :options="linkcraftOptions"
+                :placeholder="linkcraftResources.length ? '选择灵创动作' : '未获取到动作（机器人离线或无资源）'"
+              />
+              <NSelect
+                v-else-if="param.name === 'motion_id'"
+                :value="motionKey(Number((stepEditData as any).motion_id) || 0, Number((stepEditData as any).area) || 0)"
+                size="small"
+                filterable
+                :options="MOTION_OPTIONS"
+                @update:value="(v: string) => { const c = parseMotionKey(v); (stepEditData as any).motion_id = c.motion; (stepEditData as any).area = c.area }"
+              />
+              <NSelect
+                v-else-if="param.name === 'emotion_id'"
+                v-model:value="(stepEditData as any)[param.name]"
+                size="small"
+                filterable
+                :options="EMOJI_OPTIONS"
+              />
+              <NInputNumber v-else-if="param.type === 'number'" v-model:value="(stepEditData as any)[param.name]" size="small" :step="0.1" style="width:100%" />
+              <NSelect
+                v-else-if="param.type === 'select'"
+                v-model:value="(stepEditData as any)[param.name]"
+                size="small"
+                :options="(param.options || []).map((o: any) => ({ label: o.label, value: o.value }))"
+              />
+            </template>
             <span v-if="param.hint" class="form-hint">{{ param.hint }}</span>
           </div>
         </template>
@@ -568,6 +575,9 @@ async function handleSave() {
 .type-label { font-size: 12px; }
 
 .form-row { display: flex; flex-direction: column; gap: 4px; }
+.form-row.switch-row { gap: 6px; }
+.switch-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.switch-line .form-label { margin: 0; }
 .form-label { font-size: 12px; color: var(--text-secondary); font-weight: 600; }
-.form-hint { font-size: 11px; color: var(--text-secondary); opacity: 0.7; }
+.form-hint { font-size: 11px; color: var(--text-secondary); opacity: 0.7; line-height: 1.5; }
 </style>
