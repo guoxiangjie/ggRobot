@@ -2,7 +2,7 @@
 
 改造要点（相比旧版）：
 1. 添加 RGBD 相机订阅 + 帧缓存（供 WebSocket 推送）
-2. 去掉 MIC VAD 采集（简化，后续再加）
+2. 添加 MIC VAD 采集（/agent/process_audio_output）+ 可插拔 ASR（funasr/none）
 3. 输入源注册统一处理
 4. 所有跨板调用统一走 retry.call_with_retry
 """
@@ -24,8 +24,9 @@ from aimdk_msgs.srv import (
     GetSystemState, MigrateSystemState, PlayEmoji, PlayAudioFile, PlayVideo,
     SetVolume, GetVolume, SetMute, GetMute, SetMcInputSource,
     GetRobotResources, ExecuteActionResource,
+    GetMicSourceRequest, SetMicSourceRequest,
 )
-from aimdk_msgs.msg import McLocomotionVelocity, PmuState, MessageHeader, PlayStateChange, JointStateArray
+from aimdk_msgs.msg import McLocomotionVelocity, PmuState, MessageHeader, PlayStateChange, JointStateArray, ProcessedAudioOutput
 from sensor_msgs.msg import Imu, CompressedImage
 
 from .config import VEL_SOURCE_NAME, VEL_PUBLISH_RATE
@@ -107,6 +108,8 @@ class X2Node(Node):
         self.mute_set = self.create_client(SetMute, "/aimdk_5Fmsgs/srv/SetMute", callback_group=g)
         self.get_resources_client = self.create_client(GetRobotResources, "/aimdk_5Fmsgs/srv/GetRobotResources", callback_group=g)
         self.play_resource_client = self.create_client(ExecuteActionResource, "/aimdk_5Fmsgs/srv/ExecuteActionResource", callback_group=g)
+        self.mic_get_client = self.create_client(GetMicSourceRequest, "/aimdk_5Fmsgs/srv/GetMicSourceRequest", callback_group=g)
+        self.mic_set_client = self.create_client(SetMicSourceRequest, "/aimdk_5Fmsgs/srv/SetMicSourceRequest", callback_group=g)
 
         # ── 速度发布 ──
         self.vel_publisher = self.create_publisher(McLocomotionVelocity, "/aima/mc/locomotion/velocity", 10)
@@ -173,6 +176,24 @@ class X2Node(Node):
         # ── 订阅音频播放状态（TTS 完成事件）──
         self.create_subscription(PlayStateChange, "/aima/hal/audio/play_state", self._on_play_state, qos_profile_sensor_data)
 
+        # ── MIC VAD 采集（/agent/process_audio_output）──
+        # 机器人侧 agent 已做降噪 + VAD；需要先唤醒词激活（v0.9+，见 CLAUDE.md）。
+        # 无论内置/外置麦，数据都走 stream_id=1；识别到语言后堆积数据先极速发出，后续约 25Hz。
+        self.mic_enabled = False          # 前端开关：开启后才做 ASR（采集/状态始终跟踪）
+        self._mic_lock = threading.Lock()
+        self._vad_state = 0               # 0=无语音 1=开始 2=处理中 3=结束
+        self._mic_segment = b""           # 当前正在累积的语音段
+        self._mic_segment_ts = 0.0
+        self._mic_last_segment = b""      # 最近一个完整语音段（VAD END 触发）
+        self._mic_last_segment_ts = 0.0
+        self._mic_last_segment_size = 0
+        self._mic_text = ""               # 最近识别结果
+        self._mic_source = 0              # 0=内置麦 1=外置麦
+        self._mic_recv = 0                # 收消息计数（诊断）
+        self._asr_busy = False
+        self._mic_sub = self.create_subscription(
+            ProcessedAudioOutput, "/agent/process_audio_output", self._on_mic, qos_profile_sensor_data)
+
         # ── 自动选择第一个有数据的相机 ──
         self._auto_select_camera()
 
@@ -214,6 +235,7 @@ class X2Node(Node):
             ("GetVolume", self.vol_get), ("SetVolume", self.vol_set),
             ("GetMute", self.mute_get), ("SetMute", self.mute_set),
             ("SetMcInputSource", self.input_source_client),
+            ("GetMicSourceRequest", self.mic_get_client), ("SetMicSourceRequest", self.mic_set_client),
         ]
         deadline = time.time() + timeout
         pending = dict(clients)
@@ -260,6 +282,96 @@ class X2Node(Node):
             "accel_y": round(msg.linear_acceleration.y, 2),
             "accel_z": round(msg.linear_acceleration.z, 2),
         }
+
+    # ── MIC VAD 采集 ──
+    def _on_mic(self, msg: ProcessedAudioOutput):
+        """VAD 音频段回调：按 VAD 状态累积/封包，结束后台 ASR（绝不阻塞 rclpy 回调）"""
+        self._mic_recv += 1
+        vad = msg.audio_vad_state.value if msg.audio_vad_state else 0
+        data = bytes(msg.audio_data) if msg.audio_data else b""
+
+        with self._mic_lock:
+            self._vad_state = vad
+            if msg.stream_id != 1:   # 数据统一走 stream_id=1
+                return
+            if vad == 3:  # 语音结束 → 封包
+                if data:
+                    self._mic_segment += data
+                self._mic_last_segment = self._mic_segment
+                self._mic_last_segment_ts = time.time()
+                self._mic_last_segment_size = len(self._mic_segment)
+                self._mic_segment = b""
+                self._mic_segment_ts = 0.0
+                segment = self._mic_last_segment
+                if segment and self.mic_enabled and not self._asr_busy:
+                    self._asr_busy = True
+                    threading.Thread(target=self._asr_worker, args=(segment,), daemon=True).start()
+            elif vad in (1, 2):  # 开始/处理中 → 累积
+                if not self._mic_segment_ts:
+                    self._mic_segment_ts = time.time()
+                self._mic_segment += data
+                # 防 VAD END 漏收导致无限增长
+                if len(self._mic_segment) > 2 * 1024 * 1024:
+                    self._mic_segment = self._mic_segment[-2 * 1024 * 1024:]
+            else:  # 0=无语音
+                self._mic_segment = b""
+                self._mic_segment_ts = 0.0
+
+    def _asr_worker(self, segment: bytes):
+        """后台识别线程：识别结果写回 _mic_text"""
+        try:
+            from .asr import get_asr_engine
+            text = get_asr_engine().recognize(segment)
+            with self._mic_lock:
+                if text:
+                    self._mic_text = text
+                    logger.info(f"🎙️ 识别结果: {text}")
+        except Exception as e:
+            logger.warning(f"🎙️ ASR 异常: {e}")
+        finally:
+            self._asr_busy = False
+
+    def get_mic_status(self) -> dict:
+        """MIC 采集/识别状态（路由直接读，无需进命令队列）"""
+        with self._mic_lock:
+            return {
+                "enabled": self.mic_enabled,
+                "vad_state": self._vad_state,
+                "segment_bytes": len(self._mic_segment),
+                "last_segment_bytes": self._mic_last_segment_size,
+                "last_segment_ts": self._mic_last_segment_ts,
+                "mic_source": self._mic_source,
+                "text": self._mic_text,
+                "recv_count": self._mic_recv,
+            }
+
+    # ── 麦克风设备 ──
+    def _do_get_mic_source(self) -> dict:
+        from .retry import call_with_retry
+
+        def build():
+            req = GetMicSourceRequest.Request()
+            req.header.header.stamp = self.get_clock().now().to_msg()  # CommonRequest → 两层
+            return req
+        resp = call_with_retry(self, self.mic_get_client, build, "GetMicSourceRequest")
+        if resp is not None:
+            self._mic_source = resp.mic_source
+            return {"ok": True, "mic_source": resp.mic_source}
+        return {"ok": False, "mic_source": self._mic_source, "message": "查询超时"}
+
+    def _do_set_mic_source(self, mic_source: int) -> dict:
+        from .retry import call_with_retry
+
+        def build():
+            req = SetMicSourceRequest.Request()
+            req.header.header.stamp = self.get_clock().now().to_msg()
+            req.mic_source = mic_source
+            return req
+        resp = call_with_retry(self, self.mic_set_client, build, "SetMicSourceRequest")
+        if resp is not None:
+            self._mic_source = mic_source
+            return {"ok": True, "mic_source": mic_source}
+        return {"ok": False, "mic_source": self._mic_source, "message": "切换超时"}
 
     def _on_camera(self, msg: CompressedImage):
         """缓存相机帧，供 WebSocket 推送"""
@@ -486,6 +598,8 @@ class X2Node(Node):
             "set_volume": self._do_set_volume,
             "get_mute": self._do_get_mute,
             "set_mute": self._do_set_mute,
+            "mic_source_get": self._do_get_mic_source,
+            "mic_source_set": self._do_set_mic_source,
             "action_sequence": self._do_action_sequence,
             "camera_list": self.list_cameras,
             "camera_switch": self.switch_camera,

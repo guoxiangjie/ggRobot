@@ -112,6 +112,26 @@ export async function playMedia(name: string) {
   return data as { ok: boolean; error?: string }
 }
 
+// ── MIC 采集 / VAD / ASR ──
+export interface MicStatus {
+  ok: boolean
+  enabled: boolean
+  vad_state: number
+  vad_label?: string
+  segment_bytes: number
+  last_segment_bytes: number
+  last_segment_ts: number
+  mic_source: number
+  text: string
+  recv_count: number
+}
+export async function micStatus() { const { data } = await api.get('/api/mic'); return data as MicStatus }
+export async function micToggle(enable: boolean) { const { data } = await api.post('/api/mic', { enable }); return data as { ok: boolean; enabled: boolean; vad_state: number; error?: string } }
+export async function getMicAudio() { const { data } = await api.get('/api/mic/audio'); return data as { ok: boolean; data: string; size: number; text: string } }
+export async function getMicSource() { const { data } = await api.get('/api/mic/source'); return data as { ok: boolean; mic_source: number; error?: string } }
+export async function setMicSource(mic_source: number) { const { data } = await api.post('/api/mic/source', { mic_source }); return data as { ok: boolean; mic_source: number; error?: string } }
+export async function forceAsr() { const { data } = await api.post('/api/mic/asr'); return data as { ok: boolean; started: boolean; error?: string } }
+
 // ── 音量 ──
 export async function getVolume() { const { data } = await api.get('/api/volume'); return data as { volume: number } }
 export async function setVolume(volume: number) { const { data } = await api.post(`/api/volume?volume=${volume}`); return data as { volume: number } }

@@ -21,10 +21,10 @@ ggRobot/
 ├── gg_robot/           ← Python 后端 (FastAPI + rclpy/ROS2)
 │   ├── __main__.py     ← 入口：启动rclpy守护线程 → 等待就绪 → 启动FastAPI
 │   ├── server.py       ← FastAPI 应用工厂（路由+CORS+静态文件+lifespan）
-│   ├── node.py         ← 核心ROS2节点：16个Service客户端+传感器订阅+命令队列
+│   ├── node.py         ← 核心ROS2节点：18个Service客户端+传感器订阅+命令队列
 │   ├── schemas.py      ← Pydantic 请求/响应模型
 │   ├── retry.py        ← 跨板Service调用重试封装（3次×3.0s，可按接口调）
-│   ├── routes/         ← REST API 路由（tts/motion/velocity/system/emoji/media/volume/mic/sequence）
+│   ├── routes/         ← REST API 路由（tts/motion/velocity/system/emoji/media/volume/mic/mode/sequence/camera/task/resource/phone/project）
 │   └── ws/stream.py    ← WebSocket端点 + 传感器推送 + 相机帧推送 + 键盘遥控
 ├── web/                ← Vue3 PWA 前端源码
 │   └── src/
@@ -88,6 +88,8 @@ ggRobot/
 | PlayEmoji | `POST /api/emoji` | 面部表情 |
 | SetVolume/GetVolume | `GET\|POST /api/volume` | 音量 |
 | SetMute/GetMute | `GET\|POST /api/mute` | 静音 |
+| GetMicSource/SetMicSource | `GET\|POST /api/mic/source` | 麦克风设备切换（0=内置 1=外置） |
+| VAD 音频采集 | 订阅 `/agent/process_audio_output` | 降噪后 VAD 语音段（PCM 16k/16bit/mono），`GET /api/mic` 状态 / `GET /api/mic/audio` 取段 |
 | PlayMediaFile(原PlayAudioFile)/PlayVideo | `POST /api/media/play` | 音视频播放（v0.8.0改名，结构扁平化） |
 | SetMcAction | `POST /api/mode` | 运动模式切换（⚠️v0.8.2+ 用 action_desc 字符串: PASSIVE/DAMPING/JOINT/STAND/LOCOMOTION_DEFAULT，非数字ID） |
 
@@ -134,3 +136,4 @@ make all      # web + deploy一键
 8. **time.sleep 卡死rclpy spin** — 用 spin_once 循环替代
 9. **Mac Python版本** — 用 Homebrew python@3.12，不要用 3.14（llvmlite不兼容）
 10. **SDK 版本说明** — 文档站 latest 指向 v0.9.0（部分页面已到 v1.0.0）。项目接口现状：McAction 支持 action_desc 字符串 + action_value 数字 ID（SIT_DOWN=2000/ZERO_TORQUE=4 必须用数字）、area 用 1/2/3/11、相机用 rgbd_head_front、TTS 以 estimated_duration 估时、关节状态是 JointStateArray 非 sensor_msgs。**速查见 docs/api_reference.md 与 docs/dev_guide.md**
+11. **MIC VAD 需要唤醒词激活（v0.9+）** — `/agent/process_audio_output` 的 VAD 事件：原生智元交互保持开启时唤醒词仅短时激活；切 only_voice 模式后首次唤醒词即长期激活，后续有语音即触发。ASR 可插拔（robot.yaml mic.asr_provider）：默认 none 只采集不识别；funasr 需在 Orin 装 funasr/modelscope/torch（Jetson 用 NVIDIA wheel）。识别在独立线程跑，绝不阻塞 rclpy 回调

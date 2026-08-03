@@ -12,6 +12,7 @@ def register_routes(app: FastAPI):
     from .media import router as media_router
     from .logo import router as logo_router
     from .volume import router as volume_router
+    from .mic import router as mic_router
     from .mode import router as mode_router
     from .sequence import router as sequence_router
     from .camera import router as camera_router
@@ -28,6 +29,7 @@ def register_routes(app: FastAPI):
     app.include_router(media_router)
     app.include_router(logo_router)
     app.include_router(volume_router)
+    app.include_router(mic_router)
     app.include_router(mode_router)
     app.include_router(sequence_router)
     app.include_router(camera_router)

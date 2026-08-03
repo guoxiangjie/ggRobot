@@ -88,6 +88,10 @@ PC3_PASSWORD = os.environ.get("GGROBOT_PC3_PASSWORD", "")  # 配了则用 sshpas
 VEL_SOURCE_NAME = _get("velocity.source_name", "web_ui")
 VEL_PUBLISH_RATE = _get("velocity.publish_rate", 50)
 
+# 麦克风 ASR
+MIC_ASR_PROVIDER = _get("mic.asr_provider", "none")   # none=只采集不识别；funasr=本地 FunASR
+MIC_ASR_MODEL = _get("mic.asr_model", "paraformer-zh")
+
 # 注：导航参数未走本配置 —— navigation/avoidance.py 独立运行，
 # 参数硬编码在其 CFG 字典中（robot.yaml 的 navigation 段暂未接线，见该文件注释）。
 

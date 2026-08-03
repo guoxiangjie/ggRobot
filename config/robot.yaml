@@ -43,3 +43,11 @@ navigation:
 velocity:
   source_name: "web_ui"
   publish_rate: 50  # Hz
+
+# ── 麦克风采集 / ASR ──
+# VAD 音频流由机器人侧 agent 发布（/agent/process_audio_output），
+# ⚠️ VAD 需要唤醒词激活（v0.9+）：原生交互保持开启时唤醒词短时激活；
+#    智元交互切 only_voice 模式后，首次唤醒词即长期激活。
+mic:
+  asr_provider: "none"          # none=只采集不识别；funasr=本地 FunASR(paraformer-zh)
+  asr_model: "paraformer-zh"

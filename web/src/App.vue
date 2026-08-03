@@ -7,6 +7,7 @@ import { useConnectionStore } from '@/stores/connection'
 import IconDashboard from '~icons/mdi/view-dashboard-outline'
 import IconTask from '~icons/mdi/run'
 import IconProject from '~icons/mdi/view-grid-outline'
+import IconVoice from '~icons/mdi/microphone'
 import IconControl from '~icons/mdi/gamepad-circle-outline'
 import IconCamera from '~icons/mdi/webcam'
 import IconModel from '~icons/mdi/cube-outline'
@@ -36,6 +37,7 @@ const menuOptions: MenuOption[] = [
   { label: '控制',   key: 'control',   icon: renderIcon(IconControl) },
   { label: '作业',   key: 'task',      icon: renderIcon(IconTask) },
   { label: '自由',   key: 'project',   icon: renderIcon(IconProject) },
+  { label: '语音',   key: 'voice',     icon: renderIcon(IconVoice) },
   { label: '相机',   key: 'camera',    icon: renderIcon(IconCamera) },
   { label: '孪生',   key: 'model',     icon: renderIcon(IconModel) },
   { label: '媒体',   key: 'media',     icon: renderIcon(IconMedia) },
