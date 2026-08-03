@@ -115,7 +115,7 @@ def init_builtin_projects():
 
 def migrate_legacy_motions():
     """一次性修复已保存项目节点里的旧动作数据（area=0 / 旧 ID 3004 等），幂等。"""
-    from .motions import normalize_step_motions
+    from ..task.motions import normalize_step_motions
     fixed = 0
     for path in PROJECTS_DIR.glob("*.json"):
         try:
