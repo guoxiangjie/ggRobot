@@ -56,7 +56,8 @@ mic:
 # provider: none=内置规则生成（离线可用）；openai=OpenAI 兼容 chat/completions 接口
 # api_key 也可用环境变量 GGROBOT_AI_API_KEY 传入（避免明文进 yaml）
 ai:
-  provider: "none"
-  base_url: ""
-  api_key: ""
-  model: "gpt-4o-mini"
+  provider: "openai"
+  base_url: "https://api.deepseek.com"
+  api_key: "sk-8a7d71866da8499784b26ac9fb9d00d8"
+  # API 模型 ID 用小写（deepseek-v4-flash / deepseek-v4-pro）
+  model: "deepseek-v4-flash"

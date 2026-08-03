@@ -198,15 +198,21 @@ def _llm_generate(prompt: str) -> dict:
     if not (AI_API_KEY and AI_BASE_URL):
         raise ValueError("未配置 AI 接口（robot.yaml ai.api_key / ai.base_url）")
     url = AI_BASE_URL.rstrip("/") + "/chat/completions"
-    body = json.dumps({
+    payload = {
         "model": AI_MODEL,
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.4,
-        "max_tokens": 2000,
-    }).encode()
+        "max_tokens": 4000,
+    }
+    if "deepseek" in (AI_BASE_URL or "").lower():
+        # DeepSeek v4 默认开启思考模式，max_tokens 是"思维链+答案"总预算，
+        # 复杂提示词下思维链会吃光预算导致 content 为空 → 解析失败。
+        # 本场景是结构化 JSON 生成，关闭思考模式更快更稳。
+        payload["thinking"] = {"type": "disabled"}
+    body = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=body, headers={
         "Authorization": f"Bearer {AI_API_KEY}",
         "Content-Type": "application/json",
