@@ -28,7 +28,12 @@ def _load_yaml(path: Path) -> dict:
             indent = len(line) - len(line.lstrip())
             key, _, val = stripped.partition(":")
             key = key.strip()
-            val = val.strip().strip('"').strip("'")
+            val = val.strip()
+            # 剥离行内注释（# 前有空白才视为注释，URL 等含 # 的值不受影响）
+            comment_at = val.find(" #")
+            if comment_at != -1:
+                val = val[:comment_at].rstrip()
+            val = val.strip('"').strip("'")
             if val == "":
                 # 父节点，创建子 dict
                 child = {}
@@ -86,7 +91,7 @@ PC3_PASSWORD = os.environ.get("GGROBOT_PC3_PASSWORD", "")  # 配了则用 sshpas
 
 # 速度控制
 VEL_SOURCE_NAME = _get("velocity.source_name", "web_ui")
-VEL_PUBLISH_RATE = _get("velocity.publish_rate", 50)
+VEL_PUBLISH_RATE = int(_get("velocity.publish_rate", 50))   # 环境变量覆盖是字符串，强制转 int
 
 # 麦克风 ASR
 MIC_ASR_PROVIDER = _get("mic.asr_provider", "none")   # none=只采集不识别；funasr=本地 FunASR
