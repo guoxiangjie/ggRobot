@@ -125,11 +125,12 @@ make all      # web + deploy一键
 ## 关键注意事项
 
 1. **PC1永远不碰** — 10.0.1.40是运控大脑
-2. **速度控制前必须注册输入源** — 名称"web_ui"，优先级40，超时1000ms
-3. **速度必须持续50Hz发送** — 单条指令无效，松开需发全零
-4. **TTS/Service跨板调用不稳定** — 统一 `retry.call_with_retry()`（3次×3.0s）
-5. **QoS不匹配是传感器无数据的第一大原因** — 实机统一用 `qos_profile_sensor_data`（BEST_EFFORT+VOLATILE）订阅传感器/相机（可匹配 RELIABLE publisher）；控制指令用 RELIABLE
-6. **音视频文件必须传到 PC3 的 `/agibot/data/home/agi/media/`** — face_ui 服务在 PC3 读 agi home 此目录，`/var/tmp` 它读不到（报文件不存在）；PC2→PC3 免密要配 PC2 的 `~/.ssh/config`（系统默认 webssh key 无效），见记忆 face-ui-pc3-media
-7. **time.sleep 卡死rclpy spin** — 用 spin_once 循环替代
-8. **Mac Python版本** — 用 Homebrew python@3.12，不要用 3.14（llvmlite不兼容）
-9. **SDK 版本说明** — 文档站 latest 指向 v0.9.0（部分页面已到 v1.0.0）。项目接口现状：McAction 支持 action_desc 字符串 + action_value 数字 ID（SIT_DOWN=2000/ZERO_TORQUE=4 必须用数字）、area 用 1/2/3/11、相机用 rgbd_head_front、TTS 以 estimated_duration 估时、关节状态是 JointStateArray 非 sensor_msgs。**速查见 docs/api_reference.md 与 docs/dev_guide.md**
+2. **用户数据不在部署目录** — 任务/项目/手机按键/媒体存 `~/ggRobot-data/`（可用 GGROBOT_DATA_DIR 或 robot.yaml server.data_dir 改），`make clean/ship` 全量部署只清 `~/ggRobot` 代码目录，不会清数据；旧版 `~/ggRobot` 内的数据首次启动自动迁移
+3. **速度控制前必须注册输入源** — 名称"web_ui"，优先级40，超时1000ms
+4. **速度必须持续50Hz发送** — 单条指令无效，松开需发全零
+5. **TTS/Service跨板调用不稳定** — 统一 `retry.call_with_retry()`（3次×3.0s）
+6. **QoS不匹配是传感器无数据的第一大原因** — 实机统一用 `qos_profile_sensor_data`（BEST_EFFORT+VOLATILE）订阅传感器/相机（可匹配 RELIABLE publisher）；控制指令用 RELIABLE
+7. **音视频文件必须传到 PC3 的 `/agibot/data/home/agi/media/`** — face_ui 服务在 PC3 读 agi home 此目录，`/var/tmp` 它读不到（报文件不存在）；PC2→PC3 免密要配 PC2 的 `~/.ssh/config`（系统默认 webssh key 无效），见记忆 face-ui-pc3-media
+8. **time.sleep 卡死rclpy spin** — 用 spin_once 循环替代
+9. **Mac Python版本** — 用 Homebrew python@3.12，不要用 3.14（llvmlite不兼容）
+10. **SDK 版本说明** — 文档站 latest 指向 v0.9.0（部分页面已到 v1.0.0）。项目接口现状：McAction 支持 action_desc 字符串 + action_value 数字 ID（SIT_DOWN=2000/ZERO_TORQUE=4 必须用数字）、area 用 1/2/3/11、相机用 rgbd_head_front、TTS 以 estimated_duration 估时、关节状态是 JointStateArray 非 sensor_msgs。**速查见 docs/api_reference.md 与 docs/dev_guide.md**

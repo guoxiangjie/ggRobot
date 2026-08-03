@@ -30,7 +30,7 @@ RSYNC_FLAGS = -avz \
 	--exclude 'ip.txt' \
 	--exclude 'logo.svg'
 
-.PHONY: build deploy clean ship start stop restart
+.PHONY: build deploy clean ship start stop restart migrate-data
 
 # ── 前端构建 ──
 build:
@@ -62,6 +62,14 @@ ship: build clean deploy
 stop:
 	@echo "🛑 停止 $(ORIN_HOST) 上的 ggRobot..."
 	-ssh $(ORIN_HOST) "pkill -f gg_robot; sleep 2; pkill -9 -f gg_robot 2>/dev/null; sleep 0.5; ss -tlnp 2>/dev/null | grep ':8000' || echo '✅ 8000 已释放'"
+
+# ── 一次性迁移：把旧版存放在部署目录内的用户数据搬到 ~/ggRobot-data ──
+# 升级到"数据独立目录"版本前先跑一次，否则 make ship 的 clean 会清掉旧数据。
+# 之后每次 ship 只清代码目录 ~/ggRobot，不再影响用户数据。
+migrate-data:
+	@echo "📦 迁移用户数据到 ~/ggRobot-data..."
+	ssh $(ORIN_HOST) "mkdir -p ~/ggRobot-data && for d in tasks projects media; do if [ -d ~/ggRobot/$$d ] && [ ! -e ~/ggRobot-data/$$d ]; then mv ~/ggRobot/$$d ~/ggRobot-data/; fi; done; if [ -f ~/ggRobot/phone_keys.json ] && [ ! -e ~/ggRobot-data/phone_keys.json ]; then mv ~/ggRobot/phone_keys.json ~/ggRobot-data/; fi; ls -A ~/ggRobot-data"
+	@echo "✅ 迁移完成（首次部署新代码后启动服务也会自动迁移兜底）"
 
 # ── 干净重启（先停后启，避免端口占用）──
 restart: stop start

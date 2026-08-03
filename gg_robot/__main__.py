@@ -97,10 +97,11 @@ def main():
         logger.error("rclpy 初始化超时，请检查 ROS2 环境")
         sys.exit(1)
 
-    # 3. 初始化内置任务
+    # 3. 迁移旧版用户数据（~/ggRobot 内 → DATA_DIR），再初始化内置任务/项目
+    from .config import migrate_legacy_data
+    migrate_legacy_data()
     from .task.store import init_builtin_tasks
     init_builtin_tasks()
-    # 初始化内置项目（自由任务模式）
     from .project.store import init_builtin_projects
     init_builtin_projects()
 

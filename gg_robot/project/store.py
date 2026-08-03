@@ -1,6 +1,6 @@
 """自由任务（项目）存储 — JSON 文件 CRUD
 
-项目文件存放在 ~/ggRobot/projects/ 目录下，每个项目一个 .json 文件。
+项目文件存放在用户数据目录 projects/ 下（默认 ~/ggRobot-data/projects/），每个项目一个 .json 文件。
 一个项目 = 一组无序节点（Node），手动单点执行（节点之间没有上下流关系）。
 """
 
@@ -10,9 +10,11 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from ..config import DATA_DIR
+
 logger = logging.getLogger(__name__)
 
-PROJECTS_DIR = Path.home() / "ggRobot" / "projects"
+PROJECTS_DIR = DATA_DIR / "projects"
 PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
 

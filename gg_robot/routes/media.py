@@ -12,12 +12,12 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 
-from ..config import PC3_HOST, PC3_MEDIA_PATH, PC3_PASSWORD
+from ..config import PC3_HOST, PC3_MEDIA_PATH, PC3_PASSWORD, DATA_DIR
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-PC2_MEDIA = Path.home() / "ggRobot/media"
+PC2_MEDIA = DATA_DIR / "media"
 PC2_MEDIA.mkdir(parents=True, exist_ok=True)
 
 PC3_USER = "agi"

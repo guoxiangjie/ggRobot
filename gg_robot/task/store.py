@@ -1,6 +1,7 @@
 """任务存储 — JSON 文件 CRUD
 
-任务文件存放在 ~/ggRobot/tasks/ 目录下，每个任务一个 .json 文件。
+任务文件存放在用户数据目录 tasks/ 下（默认 ~/ggRobot-data/tasks/，
+可用 GGROBOT_DATA_DIR / robot.yaml server.data_dir 覆盖），每个任务一个 .json 文件。
 """
 
 import json
@@ -9,9 +10,11 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from ..config import DATA_DIR
+
 logger = logging.getLogger(__name__)
 
-TASKS_DIR = Path.home() / "ggRobot" / "tasks"
+TASKS_DIR = DATA_DIR / "tasks"
 TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -137,10 +140,10 @@ def init_builtin_tasks():
 
 
 # ═══════════════════════════════════════════════
-# 手机端按键绑定（~/ggRobot/phone_keys.json，单文件 8 位）
+# 手机端按键绑定（{DATA_DIR}/phone_keys.json，单文件 8 位）
 # ═══════════════════════════════════════════════
 
-PHONE_KEYS_PATH = Path.home() / "ggRobot" / "phone_keys.json"
+PHONE_KEYS_PATH = DATA_DIR / "phone_keys.json"
 
 
 def _default_phone_keys() -> dict:
