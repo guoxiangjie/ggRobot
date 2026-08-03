@@ -491,6 +491,11 @@ async function handleSave() {
                           <component :is="typeMeta(s.type).icon" style="font-size:16px" />
                         </span>
                         <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
+                        <span class="mini-actions" @click.stop>
+                          <NButton size="tiny" text :disabled="si === 0" @click="moveAt([i, bi, si], -1)"><IconArrowUp /></NButton>
+                          <NButton size="tiny" text :disabled="si === (b.steps || []).length - 1" @click="moveAt([i, bi, si], 1)"><IconArrowDown /></NButton>
+                          <NButton size="tiny" text type="error" @click="deleteAt([i, bi, si])"><IconDelete /></NButton>
+                        </span>
                       </div>
                       <div v-if="!(b.steps || []).length" class="branch-empty">（空分支）</div>
                     </div>
@@ -518,6 +523,11 @@ async function handleSave() {
                           <component :is="typeMeta(s.type).icon" style="font-size:16px" />
                         </span>
                         <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
+                        <span class="mini-actions" @click.stop>
+                          <NButton size="tiny" text :disabled="si === 0" @click="moveAt([i, 'then', si], -1)"><IconArrowUp /></NButton>
+                          <NButton size="tiny" text :disabled="si === (block.then || []).length - 1" @click="moveAt([i, 'then', si], 1)"><IconArrowDown /></NButton>
+                          <NButton size="tiny" text type="error" @click="deleteAt([i, 'then', si])"><IconDelete /></NButton>
+                        </span>
                       </div>
                       <div v-if="!(block.then || []).length" class="branch-empty">空</div>
                     </div>
@@ -532,6 +542,11 @@ async function handleSave() {
                           <component :is="typeMeta(s.type).icon" style="font-size:16px" />
                         </span>
                         <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
+                        <span class="mini-actions" @click.stop>
+                          <NButton size="tiny" text :disabled="si === 0" @click="moveAt([i, 'else', si], -1)"><IconArrowUp /></NButton>
+                          <NButton size="tiny" text :disabled="si === (block.else || []).length - 1" @click="moveAt([i, 'else', si], 1)"><IconArrowDown /></NButton>
+                          <NButton size="tiny" text type="error" @click="deleteAt([i, 'else', si])"><IconDelete /></NButton>
+                        </span>
                       </div>
                       <div v-if="!(block.else || []).length" class="branch-empty">空</div>
                     </div>
@@ -705,6 +720,8 @@ async function handleSave() {
                   <span class="mini-icon" :style="{ color: typeMeta(s.type).color }"><component :is="typeMeta(s.type).icon" style="font-size:16px" /></span>
                   <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
                   <span class="mini-actions" @click.stop>
+                    <NButton size="tiny" text :disabled="si === 0" @click="moveAt([...selPath, 'then', si], -1)"><IconArrowUp /></NButton>
+                    <NButton size="tiny" text :disabled="si === branchThen.length - 1" @click="moveAt([...selPath, 'then', si], 1)"><IconArrowDown /></NButton>
                     <NButton size="tiny" text type="error" @click="deleteAt([...selPath, 'then', si])"><IconDelete /></NButton>
                   </span>
                 </div>
@@ -719,6 +736,8 @@ async function handleSave() {
                   <span class="mini-icon" :style="{ color: typeMeta(s.type).color }"><component :is="typeMeta(s.type).icon" style="font-size:16px" /></span>
                   <span class="mini-text">{{ typeMeta(s.type).label }} · {{ stepSummary(s) }}</span>
                   <span class="mini-actions" @click.stop>
+                    <NButton size="tiny" text :disabled="si === 0" @click="moveAt([...selPath, 'else', si], -1)"><IconArrowUp /></NButton>
+                    <NButton size="tiny" text :disabled="si === branchElse.length - 1" @click="moveAt([...selPath, 'else', si], 1)"><IconArrowDown /></NButton>
                     <NButton size="tiny" text type="error" @click="deleteAt([...selPath, 'else', si])"><IconDelete /></NButton>
                   </span>
                 </div>
