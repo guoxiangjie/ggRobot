@@ -7,6 +7,10 @@ import { useConnectionStore } from '@/stores/connection'
 import IconDashboard from '~icons/mdi/view-dashboard-outline'
 import IconTask from '~icons/mdi/run'
 import IconProject from '~icons/mdi/view-grid-outline'
+import IconSlam from '~icons/mdi/map-outline'
+import IconGroupEdit from '~icons/mdi/view-list-outline'
+import IconGroupSense from '~icons/mdi/eye-outline'
+import IconGroupExpress from '~icons/mdi/bullhorn-outline'
 import IconVoice from '~icons/mdi/microphone'
 import IconControl from '~icons/mdi/gamepad-circle-outline'
 import IconCamera from '~icons/mdi/webcam'
@@ -35,18 +39,36 @@ function renderIcon(icon: Component) {
 const menuOptions: MenuOption[] = [
   { label: '仪表盘', key: 'dashboard', icon: renderIcon(IconDashboard) },
   { label: '控制',   key: 'control',   icon: renderIcon(IconControl) },
-  { label: '作业',   key: 'task',      icon: renderIcon(IconTask) },
-  { label: '自由',   key: 'project',   icon: renderIcon(IconProject) },
-  { label: '语音',   key: 'voice',     icon: renderIcon(IconVoice) },
-  { label: '相机',   key: 'camera',    icon: renderIcon(IconCamera) },
-  { label: '孪生',   key: 'model',     icon: renderIcon(IconModel) },
-  { label: '媒体',   key: 'media',     icon: renderIcon(IconMedia) },
-  { label: '表情',   key: 'emoji',     icon: renderIcon(IconEmoji) },
-  { label: '灵创',   key: 'linkcraft', icon: renderIcon(IconLinkcraft) },
-  { label: '系统',   key: 'system',    icon: renderIcon(IconSystem) },
+  {
+    label: '编排', key: 'group-edit', icon: renderIcon(IconGroupEdit),
+    children: [
+      { label: '作业', key: 'task', icon: renderIcon(IconTask) },
+      { label: '自由', key: 'project', icon: renderIcon(IconProject) },
+    ],
+  },
+  {
+    label: '感知', key: 'group-sense', icon: renderIcon(IconGroupSense),
+    children: [
+      { label: '相机', key: 'camera', icon: renderIcon(IconCamera) },
+      { label: '孪生', key: 'model', icon: renderIcon(IconModel) },
+      { label: '建图', key: 'slam', icon: renderIcon(IconSlam) },
+    ],
+  },
+  {
+    label: '表达', key: 'group-express', icon: renderIcon(IconGroupExpress),
+    children: [
+      { label: '语音', key: 'voice', icon: renderIcon(IconVoice) },
+      { label: '表情', key: 'emoji', icon: renderIcon(IconEmoji) },
+      { label: '媒体', key: 'media', icon: renderIcon(IconMedia) },
+      { label: '灵创', key: 'linkcraft', icon: renderIcon(IconLinkcraft) },
+    ],
+  },
+  { label: '系统', key: 'system', icon: renderIcon(IconSystem) },
 ]
 
 function onMenuChange(key: string) {
+  // 分组标题（group-xxx）只展开下拉，不导航
+  if (key.startsWith('group-')) return
   router.push({ name: key })
 }
 </script>
@@ -60,7 +82,7 @@ function onMenuChange(key: string) {
     <NLayout v-else class="app">
       <NLayoutHeader bordered class="topbar-wrap">
         <div class="topbar">
-          <span class="brand">ggRobot</span>
+          <span class="brand">机器人通用控制平台</span>
           <NMenu
             mode="horizontal"
             :value="(route.name as string)"

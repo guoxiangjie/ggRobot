@@ -20,6 +20,7 @@ def register_routes(app: FastAPI):
     from .resource import router as resource_router
     from .phone import router as phone_router
     from .project import router as project_router
+    from .slam import router as slam_router
 
     app.include_router(tts_router)
     app.include_router(motion_router)
@@ -37,3 +38,4 @@ def register_routes(app: FastAPI):
     app.include_router(resource_router)
     app.include_router(phone_router)
     app.include_router(project_router)
+    app.include_router(slam_router)
