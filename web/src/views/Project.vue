@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onDeactivated } from 'vue'
 import {
-  NButton, NInput, NModal, NSelect, NTag, NInputNumber, NSwitch, NScrollbar, NEmpty, useMessage,
+  NButton, NInput, NModal, NSelect, NTag, NInputNumber, NSwitch, NScrollbar, NEmpty, NProgress, useMessage,
 } from 'naive-ui'
 import {
   getProjects, getProject, saveProject, deleteProject, runProjectNode, stopProjectNode,
-  getResources, type Project, type ProjectNode, type RobotResource,
+  runProjectBatch, stopTask, getTaskStatus,
+  getResources, type Project, type ProjectNode, type RobotResource, type TaskStatus,
 } from '@/api/fastapi'
 import { MOTION_OPTIONS, motionLabel, motionKey, parseMotionKey } from '@/config/motions'
 import IconPlus from '~icons/mdi/plus'
@@ -14,6 +15,7 @@ import IconCog from '~icons/mdi/cog'
 import IconStop from '~icons/mdi/stop'
 import IconDelete from '~icons/mdi/delete'
 import IconContentSave from '~icons/mdi/content-save'
+import IconPlay from '~icons/mdi/play'
 
 const message = useMessage()
 
@@ -56,13 +58,13 @@ const STEP_PARAMS: Record<string, ParamDef[]> = {
     { name: 'wait_done', label: '精确等待播完', type: 'switch', default: true },
     { name: 'delay', label: '额外等待(s)', type: 'number', default: 0 },
   ],
-  motion: [{ name: 'motion_id', label: '动作', type: 'number', required: true, hint: '需在稳定站立(STAND_DEFAULT)模式下执行；motion+area 为绑定组合' }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 1 }],
+  motion: [{ name: 'motion_id', label: '动作', type: 'number', required: true, hint: '需在稳定站立(STAND_DEFAULT)模式下执行；动作做完后自动等待，无需手动加延迟' }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 0.3 }],
   emoji: [{ name: 'emotion_id', label: '表情', type: 'number', required: true }, { name: 'mode', label: '模式', type: 'select', default: 1, options: [{ label: '播放一次', value: 1 }, { label: '循环', value: 2 }] }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 0.5 }],
   velocity: [{ name: 'forward', label: '前后(m/s)', type: 'number', default: 0.3 }, { name: 'lateral', label: '左右(m/s)', type: 'number', default: 0 }, { name: 'angular', label: '旋转(rad/s)', type: 'number', default: 0 }, { name: 'duration', label: '持续时间(s)', type: 'number', default: 2 }],
   mode: [{ name: 'action_desc', label: '模式', type: 'select', required: true, default: 'STAND_DEFAULT', options: MODE_OPTIONS }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 1 }],
   volume: [{ name: 'volume', label: '音量(0-100)', type: 'number', default: 50 }],
   media: [{ name: 'file_name', label: '文件名', type: 'string', required: true, hint: 'PC3 上的音视频文件名' }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 2 }],
-  linkcraft: [{ name: 'resource_key', label: '动作（从机器人拉取）', type: 'string', required: true }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 2 }],
+  linkcraft: [{ name: 'resource_key', label: '动作（从机器人拉取）', type: 'string', required: true }, { name: 'delay', label: '完成后等待(s)', type: 'number', default: 0.3 }],
   wait: [{ name: 'duration', label: '等待时间(s)', type: 'number', default: 2 }],
   http: [
     { name: 'method', label: '方法', type: 'select', required: true, default: 'GET', options: HTTP_METHOD_OPTIONS },
@@ -80,8 +82,8 @@ const STEP_DEFAULTS: Record<string, Record<string, unknown>> = {
     Object.entries(STEP_PARAMS).map(([t, ps]) => [t, Object.fromEntries(ps.filter(p => p.default !== undefined).map(p => [p.name, p.default]))])
   ),
   tts: { text: '', wait_done: true, delay: 0, motions: [], emojis: [] },
-  motion: { motion_id: 1002, area: 2, delay: 1 },
-  linkcraft: { resource_key: '', version: '', resource_type: '', name: '', delay: 2 },
+  motion: { motion_id: 1002, area: 2, delay: 0.3 },
+  linkcraft: { resource_key: '', version: '', resource_type: '', name: '', delay: 0.3 },
 }
 function typeMeta(t: string) { return STEP_TYPES.find(s => s.type === t) || { label: t, icon: '🔸', color: '#666' } }
 function emojiLabel(id: number) { return EMOJI_OPTIONS.find(o => o.value === id)?.label || `表情#${id}` }
@@ -112,7 +114,8 @@ const linkcraftMap = computed(() => {
   return m
 })
 async function loadResources() {
-  try { const r = await getResources(); if (r.ok) linkcraftResources.value = r.resources } catch { /* */ }
+  try { const r = await getResources(); if (r.ok) linkcraftResources.value = r.resources }
+  catch { message.warning('灵创资源加载失败，机器人可能离线（灵创节点将无法选择）', { duration: 5000 }) }
 }
 
 // ── 视图状态 ──
@@ -128,7 +131,7 @@ const filteredNodes = computed(() => {
   return nodes.filter(n => `${n.name} ${typeMeta(n.type).label} ${nodeSummary(n)}`.toLowerCase().includes(q))
 })
 
-// ── 执行 ──
+// ── 执行（单节点）──
 const runningNodeId = ref('')
 async function runNode(n: ProjectNode) {
   const pid = currentProject.value?.id
@@ -146,21 +149,69 @@ async function runNode(n: ProjectNode) {
   } catch { message.error('执行请求失败') }
   finally { runningNodeId.value = '' }
 }
+
+// ── 多选连播 ──
+const multiSelect = ref(false)
+const selectedIds = ref<Set<string>>(new Set())
+const batchRunning = ref(false)
+const batchStatus = ref<TaskStatus>({ running: false, task_id: '', task_name: '', total: 0, current: 0, progress: 0, current_step: null, started_at: '' })
+function toggleSelect(id: string) {
+  if (!id) return
+  const s = new Set(selectedIds.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  selectedIds.value = s
+}
+function exitMultiSelect() { multiSelect.value = false; selectedIds.value = new Set() }
+let batchTimer: ReturnType<typeof setInterval> | null = null
+function stopBatchPoll() { if (batchTimer) { clearInterval(batchTimer); batchTimer = null } }
+function pollBatch() {
+  if (batchTimer) return
+  batchTimer = setInterval(async () => {
+    try {
+      const s = await getTaskStatus()
+      batchStatus.value = s
+      if (!s.running) {
+        stopBatchPoll(); batchRunning.value = false
+        selectedIds.value = new Set(); multiSelect.value = false
+        message.success('连播完成')
+      }
+    } catch { stopBatchPoll(); batchRunning.value = false }
+  }, 500)
+}
+async function runBatch(mode: 'sequence' | 'parallel' = 'sequence') {
+  const pid = currentProject.value?.id
+  const ids = [...selectedIds.value]
+  if (!pid || !ids.length) return
+  batchRunning.value = true
+  try {
+    const res = await runProjectBatch(pid, ids, mode)
+    if (!res.ok) { message.warning(res.error || '启动失败', { duration: 6000 }); batchRunning.value = false; return }
+    message.success(mode === 'parallel' ? `并发 ${ids.length} 个节点` : `连播 ${ids.length} 个节点`)
+    pollBatch()
+  } catch { message.error('请求失败'); batchRunning.value = false }
+}
+async function stopBatch() {
+  try { await stopTask() } catch { /* */ }
+  stopBatchPoll(); batchRunning.value = false; message.info('已停止')
+}
 async function stopAll() {
+  // 单节点停止（连播用 stopBatch）
   try { await stopProjectNode(); message.info('已发送停止') } catch { /* */ }
   runningNodeId.value = ''
 }
 
 // ── 列表 ──
 async function loadProjects() {
-  try { const r = await getProjects(); projects.value = r.projects } catch { /* */ }
+  try { const r = await getProjects(); projects.value = r.projects }
+  catch { message.warning('项目列表加载失败，后端可能未连接', { duration: 5000 }) }
 }
 async function openProject(p: ProjectSummary) {
   view.value = 'detail'
   search.value = ''
+  exitMultiSelect()
   try { currentProject.value = await getProject(p.id) } catch { /* */ }
 }
-function backToList() { view.value = 'list'; currentProject.value = null; loadProjects() }
+function backToList() { view.value = 'list'; currentProject.value = null; exitMultiSelect(); loadProjects() }
 async function removeProject(p: ProjectSummary) {
   try { await deleteProject(p.id); message.success('已删除'); loadProjects() } catch { message.error('删除失败') }
 }
@@ -168,7 +219,6 @@ async function removeProject(p: ProjectSummary) {
 // ── 编辑（项目 + 节点）──
 const editOpen = ref(false)
 const editProject = ref<Project>({ id: '', name: '', desc: '', icon: '📂', nodes: [] })
-const addMenuOpen = ref(false)
 function openEditor(p: ProjectSummary | null) {
   if (p) {
     getProject(p.id).then(t => { editProject.value = t; editOpen.value = true }).catch(() => {})
@@ -177,16 +227,30 @@ function openEditor(p: ProjectSummary | null) {
     editOpen.value = true
   }
 }
-function addNode(type: string) {
-  editProject.value.nodes.push({ name: '', icon: '', type, ...JSON.parse(JSON.stringify(STEP_DEFAULTS[type] || {})) })
-  addMenuOpen.value = false
-  openNodeEdit(editProject.value.nodes.length - 1)
-}
-// 节点参数编辑
+// 节点编辑（合并弹窗：新建 = 顶部选类型 + 填参数；编辑 = 仅参数）
 const nodeEditOpen = ref(false)
 const nodeEditIndex = ref(-1)
+const nodeEditIsNew = ref(false)
 const nodeEditData = ref<ProjectNode>({} as ProjectNode)
+function genId() { return 'n' + Math.random().toString(36).slice(2, 10) }
+function openAddNode() {
+  nodeEditIsNew.value = true
+  nodeEditIndex.value = -1
+  nodeEditData.value = { id: genId(), name: '', icon: '', type: 'tts', ...JSON.parse(JSON.stringify(STEP_DEFAULTS['tts'] || {})) } as ProjectNode
+  nodeEditOpen.value = true
+}
+function selectNewType(type: string) {
+  // 切类型：保留 id/name/icon，参数重置为该类型默认
+  nodeEditData.value = {
+    id: nodeEditData.value.id || genId(),
+    name: nodeEditData.value.name || '',
+    icon: nodeEditData.value.icon || '',
+    type,
+    ...JSON.parse(JSON.stringify(STEP_DEFAULTS[type] || {})),
+  } as ProjectNode
+}
 function openNodeEdit(i: number) {
+  nodeEditIsNew.value = false
   nodeEditIndex.value = i
   nodeEditData.value = JSON.parse(JSON.stringify(editProject.value.nodes[i]))
   nodeEditOpen.value = true
@@ -197,7 +261,8 @@ function saveNodeEdit() {
     const r = linkcraftMap.value[d.resource_key as string]
     if (r) { d.version = r.version; d.resource_type = r.type; d.name = d.name || r.name }
   }
-  editProject.value.nodes[nodeEditIndex.value] = d
+  if (nodeEditIsNew.value) editProject.value.nodes.push(d)
+  else editProject.value.nodes[nodeEditIndex.value] = d
   nodeEditOpen.value = false
 }
 function deleteNode(i: number) {
@@ -218,6 +283,8 @@ async function handleSave() {
 }
 
 onMounted(() => { loadProjects(); loadResources() })
+onBeforeUnmount(stopBatchPoll)
+onDeactivated(stopBatchPoll)
 </script>
 
 <template>
@@ -226,7 +293,7 @@ onMounted(() => { loadProjects(); loadResources() })
     <header class="head">
       <div>
         <h1>自由任务</h1>
-        <p>项目化的动作快捷台 · 点节点即时执行，无固定流程</p>
+        <p>项目化的动作快捷台 · 点节点即时执行，或勾选多个连播</p>
       </div>
       <NButton size="small" type="primary" @click="openEditor(null)">
         <template #icon><IconPlus /></template>新建项目
@@ -255,25 +322,41 @@ onMounted(() => { loadProjects(); loadResources() })
         <NButton size="small" quaternary @click="backToList"><template #icon><IconArrowLeft /></template></NButton>
         <span class="proj-icon-sm">{{ currentProject?.icon || '📂' }}</span>
         <h2>{{ currentProject?.name }}</h2>
-        <NTag v-if="runningNodeId" type="warning" size="small" round>执行中…</NTag>
+        <NTag v-if="runningNodeId || batchRunning" type="warning" size="small" round>执行中…</NTag>
       </div>
       <div class="detail-actions">
-        <NInput v-model:value="search" placeholder="搜索节点" size="small" clearable style="width:180px" />
-        <NButton v-if="runningNodeId" size="small" type="error" @click="stopAll"><template #icon><IconStop /></template>停止</NButton>
+        <NInput v-model:value="search" placeholder="搜索节点" size="small" clearable style="width:160px" />
+        <div class="multi-toggle" v-if="!batchRunning">
+          <span class="multi-label">多选</span>
+          <NSwitch v-model:value="multiSelect" size="small" @update:value="(v:boolean) => !v && (selectedIds = new Set())" />
+        </div>
+        <NButton v-if="batchRunning" size="small" type="error" @click="stopBatch">
+          <template #icon><IconStop /></template>停止 {{ batchStatus.current }}/{{ batchStatus.total }}
+        </NButton>
+        <NButton v-else-if="runningNodeId" size="small" type="error" @click="stopAll"><template #icon><IconStop /></template>停止</NButton>
         <NButton size="small" quaternary @click="currentProject && openEditor({ id: currentProject.id!, name: currentProject.name, desc: currentProject.desc, icon: currentProject.icon, node_count: currentProject.nodes.length, updated_at: '' })">
           <template #icon><IconCog /></template>编辑
         </NButton>
       </div>
     </header>
 
+    <!-- 连播进度条 -->
+    <div class="batch-bar" v-if="batchRunning">
+      <NProgress :percentage="batchStatus.progress" :color="'#4da6ff'" :height="3" :border-radius="0"
+        style="position:absolute;top:0;left:0;right:0" />
+      <span class="batch-text">▶ 连播中 · {{ batchStatus.current }}/{{ batchStatus.total }}</span>
+    </div>
+
+    <!-- 节点网格 -->
     <div v-if="filteredNodes.length" class="node-grid">
       <button
         v-for="n in filteredNodes" :key="n.id"
         class="node-btn"
-        :class="{ running: runningNodeId === n.id }"
-        :disabled="!!runningNodeId"
-        @click="runNode(n)"
+        :class="{ running: runningNodeId === n.id, selected: multiSelect && selectedIds.has(n.id || '') }"
+        :disabled="!!runningNodeId || batchRunning"
+        @click="multiSelect ? toggleSelect(n.id || '') : runNode(n)"
       >
+        <span v-if="multiSelect" class="node-check" :class="{ checked: selectedIds.has(n.id || '') }">{{ selectedIds.has(n.id || '') ? '✓' : '' }}</span>
         <div class="node-icon" :style="{ background: typeMeta(n.type).color + '22', color: typeMeta(n.type).color }">
           {{ n.icon || typeMeta(n.type).icon }}
         </div>
@@ -285,6 +368,22 @@ onMounted(() => { loadProjects(); loadResources() })
       </button>
     </div>
     <NEmpty v-else :description="search ? '没有匹配节点' : '项目为空，点编辑添加节点'" style="margin-top:60px" />
+
+    <!-- 多选浮条 -->
+    <Transition name="bar">
+      <div v-if="multiSelect && selectedIds.size > 0 && !batchRunning" class="float-bar">
+        <span>已选 {{ selectedIds.size }} 个</span>
+        <div class="float-actions">
+          <NButton size="small" quaternary @click="exitMultiSelect">取消</NButton>
+          <NButton size="small" type="info" @click="runBatch('parallel')">
+            <template #icon><IconPlay /></template>并发执行
+          </NButton>
+          <NButton size="small" type="primary" @click="runBatch('sequence')">
+            <template #icon><IconPlay /></template>连播
+          </NButton>
+        </div>
+      </div>
+    </Transition>
   </div>
 
   <!-- 项目编辑 modal -->
@@ -309,7 +408,7 @@ onMounted(() => { loadProjects(); loadResources() })
           <NEmpty v-else description="还没有节点" size="small" style="margin:30px 0" />
         </NScrollbar>
       </div>
-      <NButton dashed block style="margin-top:10px" @click="addMenuOpen = true">
+      <NButton dashed block style="margin-top:10px" @click="openAddNode">
         <template #icon><IconPlus /></template>添加节点
       </NButton>
     </div>
@@ -321,23 +420,23 @@ onMounted(() => { loadProjects(); loadResources() })
     </template>
   </NModal>
 
-  <!-- 选择节点类型 -->
-  <NModal v-model:show="addMenuOpen" preset="card" title="选择节点类型" style="max-width:460px">
-    <div class="type-grid">
-      <div v-for="t in STEP_TYPES" :key="t.type" class="type-item" @click="addNode(t.type)">
-        <div class="type-icon" :style="{ background: t.color + '22', color: t.color }">{{ t.icon }}</div>
-        <div class="type-label">{{ t.label }}</div>
-      </div>
-    </div>
-  </NModal>
-
-  <!-- 节点参数编辑 -->
-  <NModal v-model:show="nodeEditOpen" preset="card" title="编辑节点" style="max-width:460px">
+  <!-- 节点编辑 modal（合并：新建可在此选类型 + 填参数）-->
+  <NModal v-model:show="nodeEditOpen" preset="card" :title="nodeEditIsNew ? '添加节点' : '编辑节点'" style="max-width:460px">
     <div class="node-edit-form">
+      <!-- 新建模式：类型网格（选完即填参数，不再弹第二个窗）-->
+      <template v-if="nodeEditIsNew">
+        <div class="form-label">选择类型</div>
+        <div class="type-grid-mini">
+          <div v-for="t in STEP_TYPES" :key="t.type" class="type-item-mini" :class="{ active: nodeEditData.type === t.type }" @click="selectNewType(t.type)">
+            <div class="type-icon-mini" :style="{ background: t.color + '22', color: t.color }">{{ t.icon }}</div>
+            <div class="type-label-mini">{{ t.label }}</div>
+          </div>
+        </div>
+      </template>
       <div class="form-row" style="flex-direction:row;align-items:center;gap:8px">
         <NInput v-model:value="nodeEditData.icon" placeholder="图标" size="small" style="width:70px" />
         <NInput v-model:value="nodeEditData.name" placeholder="节点名称（可选）" size="small" style="flex:1" />
-        <NTag size="small" :color="{ color: typeMeta(nodeEditData.type).color, textColor: '#fff' }">{{ typeMeta(nodeEditData.type).label }}</NTag>
+        <NTag v-if="!nodeEditIsNew" size="small" :color="{ color: typeMeta(nodeEditData.type).color, textColor: '#fff' }">{{ typeMeta(nodeEditData.type).label }}</NTag>
       </div>
       <template v-for="param in STEP_PARAMS[nodeEditData.type] || []" :key="param.name">
         <div class="form-row" :class="{ 'switch-row': param.type === 'switch' }">
@@ -367,18 +466,16 @@ onMounted(() => { loadProjects(); loadResources() })
     </div>
     <template #footer>
       <div style="display:flex;justify-content:space-between;gap:8px">
-        <NButton size="small" type="error" secondary @click="deleteNode(nodeEditIndex)"><template #icon><IconDelete /></template>删除</NButton>
-        <div style="display:flex;gap:8px">
-          <NButton size="small" @click="nodeEditOpen = false">取消</NButton>
-          <NButton size="small" type="primary" @click="saveNodeEdit">确定</NButton>
-        </div>
+        <NButton v-if="!nodeEditIsNew" size="small" type="error" secondary @click="deleteNode(nodeEditIndex)"><template #icon><IconDelete /></template>删除</NButton>
+        <NButton v-else size="small" quaternary @click="nodeEditOpen = false">取消</NButton>
+        <NButton size="small" type="primary" @click="saveNodeEdit">{{ nodeEditIsNew ? '添加' : '保存' }}</NButton>
       </div>
     </template>
   </NModal>
 </template>
 
 <style scoped>
-.page { padding: 32px 0; }
+.page { padding: 32px 0; min-height: calc(100vh - 52px); }
 .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; gap: 12px; flex-wrap: wrap; }
 .head h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.02em; }
 .head p { margin: 0; font-size: 13px; color: var(--text-secondary); }
@@ -402,6 +499,12 @@ onMounted(() => { loadProjects(); loadResources() })
 .detail-title h2 { font-size: 20px; font-weight: 700; margin: 0; }
 .proj-icon-sm { font-size: 24px; }
 .detail-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.multi-toggle { display: flex; align-items: center; gap: 6px; }
+.multi-label { font-size: 12px; color: var(--text-secondary); }
+
+.batch-bar { position: relative; display: flex; align-items: center; padding: 10px 16px;
+  border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; background: rgba(77,166,255,0.06); }
+.batch-text { font-size: 13px; color: var(--accent); }
 
 .node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .node-btn {
@@ -414,12 +517,32 @@ onMounted(() => { loadProjects(); loadResources() })
 .node-btn:active:not(:disabled) { transform: translateY(0); }
 .node-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .node-btn.running { border-color: var(--accent); background: rgba(77,166,255,0.08); opacity: 1; }
+.node-btn.selected { border-color: var(--accent); background: rgba(77,166,255,0.12); }
+.node-check {
+  position: absolute; top: 8px; right: 8px; width: 18px; height: 18px;
+  border: 1.5px solid var(--text-secondary); border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: #fff; background: transparent;
+}
+.node-check.checked { background: var(--accent); border-color: var(--accent); }
 .node-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
 .node-text { flex: 1; min-width: 0; }
 .node-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node-spin { position: absolute; top: 8px; right: 8px; font-size: 12px; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* 多选浮条 */
+.float-bar {
+  position: sticky; bottom: 16px; margin-top: 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; background: var(--surface); border: 1px solid var(--accent);
+  border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  font-size: 13px;
+}
+.float-actions { display: flex; gap: 8px; }
+.bar-enter-active, .bar-leave-active { transition: all 0.2s ease; }
+.bar-enter-from, .bar-leave-to { opacity: 0; transform: translateY(8px); }
 
 /* 编辑器 */
 .editor { display: flex; flex-direction: column; gap: 10px; }
@@ -436,11 +559,20 @@ onMounted(() => { loadProjects(); loadResources() })
 .edit-node-name { font-size: 13px; font-weight: 600; min-width: 80px; }
 .edit-node-sub { flex: 1; font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.type-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-.type-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
-.type-item:hover { border-color: var(--accent); transform: translateY(-1px); }
-.type-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
-.type-label { font-size: 11px; }
+/* 类型网格（节点编辑内联版，紧凑）*/
+.type-grid-mini {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+  margin-bottom: 14px;
+}
+.type-item-mini {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+  transition: all 0.12s;
+}
+.type-item-mini:hover { border-color: var(--accent); }
+.type-item-mini.active { border-color: var(--accent); background: rgba(77,166,255,0.12); }
+.type-icon-mini { width: 30px; height: 30px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.type-label-mini { font-size: 10px; }
 
 .node-edit-form { display: flex; flex-direction: column; gap: 12px; }
 .form-row { display: flex; flex-direction: column; gap: 4px; }

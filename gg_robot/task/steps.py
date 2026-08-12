@@ -9,8 +9,9 @@
 import json
 import logging
 import re
+import threading
 
-from .motions import normalize_motion, motion_name
+from .motions import normalize_motion, motion_name, motion_duration
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,27 @@ def _render_value(value, ctx: dict):
     return value
 
 
+def _linkcraft_est(resource_type: str) -> float:
+    """灵创动作估时（秒）：全身 onnx policy 比手臂长"""
+    rt = (resource_type or "").lower()
+    if "body" in rt:
+        return 5.0
+    if "arm" in rt:
+        return 3.0
+    return 4.0
+
+
+def _mount_est(motions: list) -> float:
+    """TTS 挂载动作的最大估时（preset 用 motion_duration，linkcraft 用 _linkcraft_est）"""
+    est = 0.0
+    for m in motions or []:
+        if m.get("kind", "preset") == "linkcraft":
+            est = max(est, _linkcraft_est(m.get("resource_type", "")))
+        else:
+            est = max(est, motion_duration(m.get("motion_id", 0), m.get("area", 0)))
+    return est
+
+
 def _tts(node, step: dict):
     """TTS 语音播报 — 可并行挂载多个动作和多个表情
 
@@ -77,31 +99,49 @@ def _tts(node, step: dict):
     motions = step.get("motions", []) or []
     emojis = step.get("emojis", []) or []
 
-    extras = []
-    # 1. 先触发所有表情（立即显示）
+    # 1. 表情先触发（立即显示）
     for eid in emojis:
         if eid:
             node._do_emoji(int(eid), 1)
-            extras.append(f"表情#{eid}")
-    # 2. 触发所有动作（预设/灵创，不同区域可并行）
-    for m in motions:
-        kind = m.get("kind", "preset")
-        if kind == "linkcraft":
-            rk = m.get("resource_key", "")
-            if rk:
-                node._play_resource(rk, m.get("version", ""), m.get("resource_type", ""))
-                extras.append(f"灵创:{m.get('name', rk)}")
-        else:
-            mid = m.get("motion_id", 0)
-            if mid:
-                mid, area, valid = normalize_motion(int(mid), m.get("area", 0))
+    # 2. 并发触发动作（肢体）+ TTS（音频）——两者在机器人侧是独立系统，下发即并发；
+    #    若串行调用，_do_motion 的 service 阻塞会让 TTS 晚下发，观感"先动作后语音"。
+    tts_box: dict = {}
+
+    def _fire_tts():
+        tts_box["r"] = node._do_tts(text)
+
+    def _fire_motions():
+        for m in motions:
+            kind = m.get("kind", "preset")
+            if kind == "linkcraft":
+                rk = m.get("resource_key", "")
+                if rk:
+                    node._play_resource(rk, m.get("version", ""), m.get("resource_type", ""))
+            else:
+                mid0 = m.get("motion_id", 0)
+                if not mid0:
+                    continue
+                mid, area, valid = normalize_motion(int(mid0), m.get("area", 0))
                 if not valid:
                     logger.warning(f"  ⚠️ 挂载动作组合无效已跳过: motion={mid} area={m.get('area', 0)}")
                     continue
                 node._do_motion(area, mid, interrupt=False)
-                extras.append(f"动作#{mid}")
-    # 3. 触发 TTS（开始说话，与上面并行）
-    result = node._do_tts(text)
+
+    threads = []
+    if motions:
+        threads.append(threading.Thread(target=_fire_motions, daemon=True))
+    threads.append(threading.Thread(target=_fire_tts, daemon=True))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    result = bool(tts_box.get("r"))
+
+    extras = []
+    if emojis:
+        extras.append(f"表情×{len([e for e in emojis if e])}")
+    if motions:
+        extras.append(f"动作×{len(motions)}")
     extras_str = f" + {' '.join(extras)}" if extras else ""
     logger.info(f"  📢 TTS: {str(text)[:30]}...{extras_str} {'✅' if result else '❌'}")
     # 4. 等待播完
@@ -113,8 +153,10 @@ def _tts(node, step: dict):
         # 有挂载动作时，按策略处理动作
         if has_motion:
             if motion_wait:
-                # 等动作做完（取 max(TTS, 动作)）
-                node.wait_motion_done(timeout=step.get("motion_timeout", 30.0))
+                # 取挂载动作估时（SDK 无完成信号，不轮询 status 避免卡死）
+                est = _mount_est(motions)
+                if est > 0:
+                    node._sleep(est)
             else:
                 # 以语音为准：播完即停止动作
                 node.stop_motion()
@@ -139,6 +181,12 @@ def _motion(node, step: dict):
     result = node._do_motion(area, motion_id, interrupt)
     ok = result.get("ok", False)
     logger.info(f"  🕺 Motion {motion_name(motion_id, area)} ({motion_id}:{area}) {'✅' if ok else '❌'}")
+    # SDK 无可靠动作完成信号（GetMcAction.status 是运动模式状态，站立时一直 RUNNING，
+    # 轮询会卡到 timeout），改纯估时等待：等够动作时长，避免连续动作互相打断漏执行
+    if ok and step.get("wait_done", True):
+        est = motion_duration(motion_id, area)
+        logger.info(f"    ⏳ 估时等 {est}s")
+        node._sleep(est)
 
 
 def _emoji(node, step: dict):
@@ -214,6 +262,11 @@ def _linkcraft(node, step: dict):
     result = node._play_resource(resource_key, version, resource_type)
     ok = result.get("ok", False)
     logger.info(f"  🤖 灵创动作: {name} {'✅' if ok else '❌'}")
+    # 灵创无完成信号，按类型估时等（避免连续动作漏执行）；step.duration 可覆盖
+    if ok and step.get("wait_done", True):
+        est = float(step.get("duration") or _linkcraft_est(resource_type))
+        logger.info(f"    ⏳ 灵创估时等 {est}s")
+        node._sleep(est)
 
 
 def _http(node, step: dict, ctx: dict | None = None):
@@ -382,7 +435,9 @@ CAPABILITIES = [
             {"name": "area", "label": "身体区域", "type": "select", "default": 2,
              "options": [{"label": "左臂", "value": 1}, {"label": "右臂", "value": 2},
                          {"label": "双臂", "value": 3}, {"label": "全身", "value": 11}]},
-            {"name": "delay", "label": "完成后等待(s)", "type": "number", "default": 1.0},
+            {"name": "delay", "label": "完成后等待(s)", "type": "number", "default": 0.3},
+            {"name": "wait_done", "label": "等待动作做完", "type": "switch", "default": True,
+             "hint": "默认开：动作做完再进下一步（防漏动作）"},
         ],
     },
     {

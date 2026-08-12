@@ -219,6 +219,11 @@ export async function runProjectNode(pid: string, nid: string) {
   const { data } = await api.post(`/api/projects/${pid}/nodes/${nid}/run`, {}, { timeout: 0 })
   return data as { ok: boolean; error?: string; node_id?: string }
 }
+export async function runProjectBatch(pid: string, nodeIds: string[], mode: 'sequence' | 'parallel' = 'sequence') {
+  // 连播(sequence)/并发(parallel)：后端不阻塞（立即返回 ok），进度靠 getTaskStatus 轮询
+  const { data } = await api.post(`/api/projects/${pid}/run-batch`, { node_ids: nodeIds, mode })
+  return data as { ok: boolean; error?: string; total?: number }
+}
 export async function stopProjectNode() {
   const { data } = await api.post('/api/projects/stop')
   return data as { ok: boolean }
@@ -226,6 +231,44 @@ export async function stopProjectNode() {
 export async function getProjectStatus() {
   const { data } = await api.get('/api/projects/status')
   return data as { running: boolean; node_id: string }
+}
+
+// ── SLAM（建图/取图/重定位）──
+export interface SlamMap { map_id: string; map_name: string }
+export interface SlamMapInfo { resolution: number; width: number; height: number; origin_x: number; origin_y: number }
+export interface SlamMapData {
+  ok: boolean; error?: string; map_id?: string; map_base64?: string
+  map_info?: SlamMapInfo
+  navi_points?: { point_id: number; x: number; y: number; theta: number }[]
+  regions?: { type: number; drawing_type: number; name: string; polygon: number[][] }[]
+}
+export async function getMapList() {
+  const { data } = await api.get('/api/slam/maps')
+  return data as { maps: SlamMap[]; error?: string }
+}
+export async function getSlamMap(mapName: string) {
+  const { data } = await api.get(`/api/slam/map/${encodeURIComponent(mapName)}`, { timeout: 0 })
+  return data as SlamMapData
+}
+export async function startMapping() {
+  const { data } = await api.post('/api/slam/mapping/start')
+  return data as { ok: boolean; cmd?: string; error?: string }
+}
+export async function stopMapping(mapName: string) {
+  const { data } = await api.post('/api/slam/mapping/stop', { map_name: mapName })
+  return data as { ok: boolean; cmd?: string; error?: string }
+}
+export async function relocalize(mapId: string, x: number, y: number) {
+  const { data } = await api.post('/api/slam/relocalize', { map_id: mapId, x, y }, { timeout: 0 })
+  return data as { ok: boolean; error?: string; pose?: Record<string, number> }
+}
+export async function getSlamPose() {
+  const { data } = await api.get('/api/slam/pose')
+  return data as { pose: Record<string, number> }
+}
+export async function getSlamOrigin(mapId: string) {
+  const { data } = await api.get(`/api/slam/origin/${mapId}`)
+  return data as { ok: boolean; lines?: string[]; error?: string }
 }
 export async function getCameras() { const { data } = await api.get('/api/cameras'); return data as { cameras: { id: string; label: string; topic: string; active: boolean; selected: boolean }[] } }
 export async function switchCamera(cameraId: string) { const { data } = await api.post('/api/camera/switch', { camera_id: cameraId }); return data as { ok: boolean; error?: string } }

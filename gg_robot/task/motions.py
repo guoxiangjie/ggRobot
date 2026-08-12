@@ -76,3 +76,37 @@ def normalize_step_motions(step: dict) -> bool:
                     m["motion_id"], m["area"] = mid, area
                     changed = True
     return changed
+
+
+# ── 预设动作经验时长（秒）─────────────────────────
+# SDK 无预设动作完成信号（无完成话题/无 task_id 查询；GetMcAction.status 是运动模式
+# 状态，是否反映单个预设动作存疑），用作 wait_motion_done 失效时的兜底估时。
+# 按 motion_id 段分类，值留余量；宁可偏长半秒，不可短了漏动作。实机校准。
+_MOTION_DURATIONS: dict[int, float] = {
+    # 头部：点头/摇头（短）
+    4001: 1.5, 4002: 1.5,
+    # 基础手臂（单臂 1001-1013）：举手/挥手/握手/飞吻/击掌/平举/胸前挥手/敬礼
+    1001: 2.0, 1002: 2.0, 1003: 2.5, 1004: 2.0,
+    1007: 2.5, 1008: 2.0, 1010: 2.0, 1011: 2.0, 1013: 2.0,
+    # 转身挥手
+    2001: 3.0,
+    # 全身简单：鞠躬/鼓掌/拜拜
+    3001: 2.5, 3017: 2.5, 3031: 2.5,
+    # 全身交互：动感光波/拥抱/双手打叉/加油/挠头/抓屁股
+    3007: 3.5, 3008: 3.5, 3009: 3.5, 3011: 3.5, 3024: 3.5, 3025: 3.5,
+    # 跳舞（长）
+    3013: 4.0, 3014: 4.0,
+}
+_DEFAULT_MOTION_DURATION = 2.5
+
+
+def motion_duration(motion_id: int, area: int = 0) -> float:
+    """预设动作经验时长（秒）—— 动作等待的估时兜底。
+
+    wait_motion_done 轮询 GetMcAction.status 若 grace 期内未进入 RUNNING（status
+    不反映此动作），则按此时长 sleep 兜底，避免连续动作互相打断而漏执行。
+    """
+    base = _MOTION_DURATIONS.get(int(motion_id), _DEFAULT_MOTION_DURATION)
+    if int(area or 0) == 3:  # 双臂动作略长
+        base = max(base, 2.5)
+    return base

@@ -4,7 +4,7 @@ import {
   NButton, NInput, NModal, NSelect, NTag, NInputNumber,
   NScrollbar, NEmpty, NRadioGroup, NRadioButton, NSwitch, useMessage,
 } from 'naive-ui'
-import { saveTask, type Task, type TaskStep } from '@/api/fastapi'
+import { saveTask, type Task } from '@/api/fastapi'
 import IconDelete from '~icons/mdi/delete'
 import IconContentSave from '~icons/mdi/content-save'
 import IconPlus from '~icons/mdi/plus'
@@ -163,16 +163,15 @@ type AddTarget =
 
 const editTask = ref<Task>({ id: '', name: '', desc: '', steps: [] })
 const sel = ref<Sel | null>(null)
-const stepDraft = ref<TaskStep>({} as TaskStep)
 const addMenuOpen = ref(false)
 const addTarget = ref<AddTarget | null>(null)
-const mountOpen = ref(false)
-const mountMode = ref<'motion' | 'emoji'>('motion')
-const mountMotion = ref<{ kind: 'preset' | 'linkcraft'; motion_id: number; area: number; resource_key: string }>({ kind: 'preset', motion_id: 1002, area: 2, resource_key: '' })
-const mountEmoji = ref<number>(90)
-
-const draftMotions = computed<any[]>(() => (stepDraft.value as any).motions || [])
-const draftEmojis = computed<number[]>(() => (stepDraft.value as any).emojis || [])
+// 当前选中步骤的响应式引用（直绑 inline，改即存，无需 applyStep）
+const curStep = computed<any>(() => sel.value && sel.value.kind === 'step' ? blockAt(sel.value.path) : null)
+const draftMotions = computed<any[]>(() => curStep.value?.motions || [])
+const draftEmojis = computed<number[]>(() => curStep.value?.emojis || [])
+// inline 挂载挑选值（就地选了即加，不再开 modal）
+const mountMotionPick = ref<{ kind: 'preset' | 'linkcraft'; motion_id: number; area: number; resource_key: string }>({ kind: 'preset', motion_id: 1002, area: 2, resource_key: '' })
+const mountEmojiPick = ref<number>(90)
 const parallelBlock = computed<any>(() => (sel.value?.kind === 'parallel' ? blockAt(sel.value.path) : null))
 const branchBlock = computed<any>(() => (sel.value?.kind === 'branch' ? blockAt(sel.value.path) : null))
 const parallelBranches = computed<any[]>(() => parallelBlock.value?.branches || [])
@@ -220,11 +219,6 @@ function parentList(path: Path): any[] | null {
   return null
 }
 
-function setBlockAt(path: Path, value: any) {
-  const parent = parentList(path)
-  if (parent) parent[path[path.length - 1] as number] = value
-}
-
 function selInside(path: Path) {
   if (!sel.value || path.length > sel.value.path.length) return false
   return path.every((p, i) => sel.value!.path[i] === p)
@@ -236,7 +230,7 @@ function selectAny(path: Path) {
   if (block.type === 'parallel') { sel.value = { kind: 'parallel', path }; return }
   if (block.type === 'branch') { sel.value = { kind: 'branch', path }; return }
   sel.value = { kind: 'step', path }
-  stepDraft.value = JSON.parse(JSON.stringify(block))
+  // inline 直绑 curStep（=blockAt(sel.path)），改即存，无需 clone/applyStep
 }
 
 function stepSummary(step: any): string {
@@ -351,66 +345,38 @@ function removeBranch(bi: number) {
   parallelBlock.value.branches.splice(bi, 1)
 }
 
-// ── 右侧步骤配置 ──
-function applyStep() {
-  if (!sel.value || sel.value.kind !== 'step') return
-  const data = { ...stepDraft.value }
-  if (data.type === 'linkcraft' && data.resource_key) {
-    const r = linkcraftMap.value[data.resource_key as string]
-    if (r) { data.version = r.version; data.resource_type = r.type; data.name = r.name }
-  }
-  setBlockAt(sel.value.path, data)
-  stepDraft.value = data
-  message.success('步骤已更新')
-}
-
+// ── 右侧步骤配置（inline 直绑 curStep，改即存）──
 function onLinkcraftChange(key: string) {
+  const step = curStep.value
+  if (!step) return
   const r = linkcraftMap.value[key]
-  if (r) {
-    ;(stepDraft.value as any).version = r.version
-    ;(stepDraft.value as any).resource_type = r.type
-    ;(stepDraft.value as any).name = r.name
+  if (r) { step.version = r.version; step.resource_type = r.type; step.name = r.name }
+}
+
+// ── TTS 挂载（inline 就地添加，无 modal）──
+function addMountMotion() {
+  const step = curStep.value
+  if (!step || step.type !== 'tts') return
+  if (!step.motions) step.motions = []
+  if (mountMotionPick.value.kind === 'linkcraft') {
+    const key = mountMotionPick.value.resource_key
+    if (!key) { message.warning('请先选择灵创动作'); return }
+    const r = linkcraftMap.value[key]
+    step.motions.push({ kind: 'linkcraft', resource_key: key, version: r?.version || '', resource_type: r?.type || '', name: r?.name || key })
+  } else {
+    step.motions.push({ kind: 'preset', motion_id: mountMotionPick.value.motion_id, area: mountMotionPick.value.area })
   }
 }
 
-// ── TTS 挂载 ──
-function openMount(mode: 'motion' | 'emoji') {
-  mountMode.value = mode
-  if (mode === 'motion') {
-    mountMotion.value = { kind: 'preset', motion_id: 1002, area: 2, resource_key: '' }
-  } else {
-    mountEmoji.value = 90
-  }
-  mountOpen.value = true
-}
-
-function saveMount() {
-  const step: any = stepDraft.value
-  if (!step || step.type !== 'tts') { mountOpen.value = false; return }
-  if (mountMode.value === 'motion') {
-    if (!step.motions) step.motions = []
-    if (mountMotion.value.kind === 'linkcraft') {
-      const key = mountMotion.value.resource_key
-      const r = linkcraftMap.value[key]
-      step.motions.push({
-        kind: 'linkcraft',
-        resource_key: key,
-        version: r?.version || '',
-        resource_type: r?.type || '',
-        name: r?.name || key,
-      })
-    } else {
-      step.motions.push({ kind: 'preset', motion_id: mountMotion.value.motion_id, area: mountMotion.value.area })
-    }
-  } else {
-    if (!step.emojis) step.emojis = []
-    step.emojis.push(mountEmoji.value)
-  }
-  mountOpen.value = false
+function addMountEmoji() {
+  const step = curStep.value
+  if (!step || step.type !== 'tts') return
+  if (!step.emojis) step.emojis = []
+  step.emojis.push(mountEmojiPick.value)
 }
 
 function removeMount(kind: 'motion' | 'emoji', mountIndex: number) {
-  const step: any = stepDraft.value
+  const step = curStep.value
   if (!step || step.type !== 'tts') return
   if (kind === 'motion' && step.motions) step.motions.splice(mountIndex, 1)
   if (kind === 'emoji' && step.emojis) step.emojis.splice(mountIndex, 1)
@@ -589,27 +555,27 @@ async function handleSave() {
         <!-- 步骤配置 -->
         <template v-if="sel && sel.kind === 'step'">
           <div class="pane-head config-head">
-            <NTag :color="{ color: typeMeta(stepDraft.type).color, textColor: '#fff' }" size="small">
-              {{ typeMeta(stepDraft.type).label }}
+            <NTag :color="{ color: typeMeta(curStep.type).color, textColor: '#fff' }" size="small">
+              {{ typeMeta(curStep.type).label }}
             </NTag>
             <span class="pane-count">步骤配置</span>
           </div>
           <NScrollbar class="pane-scroll">
             <div class="config-form">
-              <template v-for="param in STEP_PARAMS[stepDraft.type as string] || []" :key="param.name">
+              <template v-for="param in STEP_PARAMS[curStep.type as string] || []" :key="param.name">
                 <div class="form-row" :class="{ 'switch-row': param.type === 'switch' }">
                   <template v-if="param.type === 'switch'">
                     <div class="switch-line">
                       <span class="form-label">{{ param.label }}</span>
-                      <NSwitch v-model:value="(stepDraft as any)[param.name]" />
+                      <NSwitch v-model:value="(curStep as any)[param.name]" />
                     </div>
                   </template>
                   <template v-else>
                     <span class="form-label">{{ param.label }}</span>
-                    <NInput v-if="param.type === 'string' && param.name !== 'resource_key'" v-model:value="(stepDraft as any)[param.name]" size="small" type="textarea" :autosize="{ minRows: 1, maxRows: 3 }" />
+                    <NInput v-if="param.type === 'string' && param.name !== 'resource_key'" v-model:value="(curStep as any)[param.name]" size="small" type="textarea" :autosize="{ minRows: 1, maxRows: 3 }" />
                     <NSelect
                       v-else-if="param.name === 'resource_key'"
-                      v-model:value="(stepDraft as any)[param.name]"
+                      v-model:value="(curStep as any)[param.name]"
                       size="small" filterable
                       :options="linkcraftOptions"
                       :placeholder="linkcraftResources.length ? '选择灵创动作' : '未获取到动作（机器人离线或无资源）'"
@@ -617,21 +583,21 @@ async function handleSave() {
                     />
                     <NSelect
                       v-else-if="param.name === 'motion_id'"
-                      :value="motionKey(Number((stepDraft as any).motion_id) || 0, Number((stepDraft as any).area) || 0)"
+                      :value="motionKey(Number((curStep as any).motion_id) || 0, Number((curStep as any).area) || 0)"
                       size="small" filterable
                       :options="MOTION_OPTIONS"
-                      @update:value="(v: string) => { const c = parseMotionKey(v); (stepDraft as any).motion_id = c.motion; (stepDraft as any).area = c.area }"
+                      @update:value="(v: string) => { const c = parseMotionKey(v); (curStep as any).motion_id = c.motion; (curStep as any).area = c.area }"
                     />
                     <NSelect
                       v-else-if="param.name === 'emotion_id'"
-                      v-model:value="(stepDraft as any)[param.name]"
+                      v-model:value="(curStep as any)[param.name]"
                       size="small" filterable
                       :options="EMOJI_OPTIONS"
                     />
-                    <NInputNumber v-else-if="param.type === 'number'" v-model:value="(stepDraft as any)[param.name]" size="small" :step="0.1" style="width:100%" />
+                    <NInputNumber v-else-if="param.type === 'number'" v-model:value="(curStep as any)[param.name]" size="small" :step="0.1" style="width:100%" />
                     <NSelect
                       v-else-if="param.type === 'select'"
-                      v-model:value="(stepDraft as any)[param.name]"
+                      v-model:value="(curStep as any)[param.name]"
                       size="small"
                       :options="(param.options || []).map((o: any) => ({ label: o.label, value: o.value }))"
                     />
@@ -640,10 +606,10 @@ async function handleSave() {
                 </div>
               </template>
 
-              <!-- TTS 并行挂载 -->
-              <template v-if="stepDraft.type === 'tts'">
+              <!-- TTS 并行挂载（inline 就地添加） -->
+              <template v-if="curStep && curStep.type === 'tts'">
                 <div class="form-row">
-                  <span class="form-label">并行挂载（旧式）</span>
+                  <span class="form-label">并行挂载（与语音同时执行）</span>
                   <div class="mount-zone">
                     <div v-for="(m, mi) in draftMotions" :key="'m'+mi" class="mount-item" :class="m.kind === 'linkcraft' ? 'linkcraft-item' : 'motion-item'">
                       <span v-if="m.kind === 'linkcraft'" class="mount-tag-text">{{ linkcraftLabel(m.resource_key) }}</span>
@@ -654,9 +620,18 @@ async function handleSave() {
                       <span class="mount-tag-text">{{ emojiLabel(e) }}</span>
                       <NButton size="tiny" text type="error" @click="removeMount('emoji', ei)">✕</NButton>
                     </div>
-                    <div class="mount-buttons">
-                      <NButton size="tiny" dashed @click="openMount('motion')"><template #icon><IconPlus /></template>动作</NButton>
-                      <NButton size="tiny" dashed @click="openMount('emoji')"><template #icon><IconPlus /></template>表情</NButton>
+                    <div class="mount-add-row">
+                      <NRadioGroup v-model:value="mountMotionPick.kind" size="small">
+                        <NRadioButton value="preset">预设</NRadioButton>
+                        <NRadioButton value="linkcraft">灵创</NRadioButton>
+                      </NRadioGroup>
+                      <NSelect v-if="mountMotionPick.kind === 'linkcraft'" v-model:value="mountMotionPick.resource_key" size="small" filterable :options="linkcraftOptions" placeholder="灵创动作" />
+                      <NSelect v-else :value="motionKey(mountMotionPick.motion_id, mountMotionPick.area)" size="small" filterable :options="MOTION_OPTIONS" @update:value="(v: string) => { const c = parseMotionKey(v); mountMotionPick.motion_id = c.motion; mountMotionPick.area = c.area }" />
+                      <NButton size="tiny" type="primary" @click="addMountMotion"><template #icon><IconPlus /></template></NButton>
+                    </div>
+                    <div class="mount-add-row">
+                      <NSelect v-model:value="mountEmojiPick" size="small" filterable :options="EMOJI_OPTIONS" placeholder="表情" style="flex:1" />
+                      <NButton size="tiny" type="primary" @click="addMountEmoji"><template #icon><IconPlus /></template>表情</NButton>
                     </div>
                   </div>
                 </div>
@@ -667,9 +642,7 @@ async function handleSave() {
             <NButton size="small" type="error" secondary @click="deleteAt(sel.path)">
               <template #icon><IconDelete /></template>删除步骤
             </NButton>
-            <NButton size="small" type="primary" @click="applyStep">
-              <template #icon><IconContentSave /></template>应用到步骤
-            </NButton>
+            <span class="auto-save-hint">改动即时生效</span>
           </div>
         </template>
 
@@ -778,42 +751,6 @@ async function handleSave() {
       </div>
     </NModal>
 
-    <!-- 挂载编辑（动作/表情） -->
-    <NModal v-model:show="mountOpen" preset="card" :title="mountMode === 'motion' ? '添加并行动作' : '添加并行表情'" style="width:380px">
-      <div style="display:flex;flex-direction:column;gap:14px">
-        <template v-if="mountMode === 'motion'">
-          <div class="form-row">
-            <span class="form-label">动作来源</span>
-            <NRadioGroup v-model:value="mountMotion.kind" size="small">
-              <NRadioButton value="preset">预设动作</NRadioButton>
-              <NRadioButton value="linkcraft">灵创动作</NRadioButton>
-            </NRadioGroup>
-          </div>
-          <template v-if="mountMotion.kind === 'linkcraft'">
-            <div class="form-row">
-              <span class="form-label">灵创动作</span>
-              <NSelect v-model:value="mountMotion.resource_key" size="small" filterable :options="linkcraftOptions" :placeholder="linkcraftResources.length ? '选择动作' : '未获取到（机器人离线）'" />
-            </div>
-          </template>
-          <template v-else>
-            <div class="form-row">
-              <span class="form-label">动作</span>
-              <NSelect :value="motionKey(mountMotion.motion_id, mountMotion.area)" size="small" filterable :options="MOTION_OPTIONS" @update:value="(v: string) => { const c = parseMotionKey(v); mountMotion.motion_id = c.motion; mountMotion.area = c.area }" />
-            </div>
-          </template>
-        </template>
-        <template v-else>
-          <div class="form-row">
-            <span class="form-label">表情</span>
-            <NSelect v-model:value="mountEmoji" size="small" filterable :options="EMOJI_OPTIONS" />
-          </div>
-        </template>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
-          <NButton size="small" @click="mountOpen = false">取消</NButton>
-          <NButton size="small" type="primary" @click="saveMount"><template #icon><IconPlus /></template>添加</NButton>
-        </div>
-      </div>
-    </NModal>
   </div>
 </template>
 
@@ -906,6 +843,8 @@ async function handleSave() {
 .emoji-item { background: rgba(233,30,99,0.14); color: #f06292; border: 1px solid rgba(233,30,99,0.3); }
 .mount-tag-text { white-space: nowrap; }
 .mount-buttons { display: flex; gap: 6px; margin-left: auto; }
+.mount-add-row { display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 4px; }
+.auto-save-hint { margin-left: auto; font-size: 11px; color: var(--text-secondary); opacity: 0.7; }
 
 /* ── 添加菜单 ── */
 .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }

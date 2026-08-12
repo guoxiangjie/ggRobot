@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import qos_profile_sensor_data, QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy
 from rclpy.callback_groups import ReentrantCallbackGroup
 
 from aimdk_msgs.srv import (
@@ -25,9 +25,13 @@ from aimdk_msgs.srv import (
     SetVolume, GetVolume, SetMute, GetMute, SetMcInputSource,
     GetRobotResources, ExecuteActionResource,
     GetMicSourceRequest, SetMicSourceRequest,
+    GetStoredMapByName,
 )
 from aimdk_msgs.msg import McLocomotionVelocity, PmuState, MessageHeader, PlayStateChange, JointStateArray, ProcessedAudioOutput
 from sensor_msgs.msg import Imu, CompressedImage
+from std_msgs.msg import String, Header
+from geometry_msgs.msg import Pose
+from nav_msgs.msg import Odometry
 
 from .config import VEL_SOURCE_NAME, VEL_PUBLISH_RATE
 
@@ -108,11 +112,19 @@ class X2Node(Node):
         self.mute_set = self.create_client(SetMute, "/aimdk_5Fmsgs/srv/SetMute", callback_group=g)
         self.get_resources_client = self.create_client(GetRobotResources, "/aimdk_5Fmsgs/srv/GetRobotResources", callback_group=g)
         self.play_resource_client = self.create_client(ExecuteActionResource, "/aimdk_5Fmsgs/srv/ExecuteActionResource", callback_group=g)
+        self.get_map_client = self.create_client(GetStoredMapByName, "/aimdk_5Fmsgs/srv/GetStoredMapByName", callback_group=g)
         self.mic_get_client = self.create_client(GetMicSourceRequest, "/aimdk_5Fmsgs/srv/GetMicSourceRequest", callback_group=g)
         self.mic_set_client = self.create_client(SetMicSourceRequest, "/aimdk_5Fmsgs/srv/SetMicSourceRequest", callback_group=g)
 
         # ── 速度发布 ──
         self.vel_publisher = self.create_publisher(McLocomotionVelocity, "/aima/mc/locomotion/velocity", 10)
+
+        # ── SLAM：建图/重定位指令 + 位姿（照 py_examples/slam.py, relocate.py）──
+        # /integrated_command 必须 TRANSIENT_LOCAL+RELIABLE，否则机器人侧订阅收不到
+        self._slam_cmd_qos = QoSProfile(depth=10, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL, reliability=QoSReliabilityPolicy.RELIABLE)
+        self.slam_cmd_pub = self.create_publisher(String, "/integrated_command", self._slam_cmd_qos)
+        self.reloc_pose_pub = self.create_publisher(Pose, "/relocalization_pose", 10)
+        self.slam_pose: dict = {}  # /slam/lidar_odom 实时位姿 {x,y,z,qx,qy,qz,qw,ts}
 
         # ── 传感器缓存 ──
         self.battery: dict = {}
@@ -175,6 +187,10 @@ class X2Node(Node):
 
         # ── 订阅音频播放状态（TTS 完成事件）──
         self.create_subscription(PlayStateChange, "/aima/hal/audio/play_state", self._on_play_state, qos_profile_sensor_data)
+
+        # ── 订阅 SLAM 激光定位（BEST_EFFORT，照 relocate.py）──
+        self.create_subscription(Odometry, "/slam/lidar_odom", self._on_slam_odom,
+                                 QoSProfile(depth=10, reliability=QoSReliabilityPolicy.BEST_EFFORT))
 
         # ── MIC VAD 采集（/agent/process_audio_output）──
         # 机器人侧 agent 已做降噪 + VAD；需要先唤醒词激活（v0.9+，见 CLAUDE.md）。
@@ -432,22 +448,34 @@ class X2Node(Node):
             time.sleep(0.02)
         return None
 
-    def wait_motion_done(self, timeout: float = 30.0) -> bool:
-        """轮询 GetMcAction.status，等动作做完（status 从 RUNNING 回到非 RUNNING）
+    def wait_motion_done(self, timeout: float = 30.0, grace: float = 0.5) -> bool:
+        """轮询 GetMcAction.status 等动作做完。返回 True=确认做完，False=状态未反映/超时。
 
-        ⚠️ McActionStatus 是否反映「预设动作」执行状态需实测。
+        策略（SDK 无预设动作完成信号，此为 best-effort）：
+        - grace 期内观测到 RUNNING(100) → 等其离开 RUNNING 即完成（精确路径）
+        - grace 期内未进入 RUNNING（status 不反映此动作）→ 立即返回 False，让调用方走估时兜底
+        - 进入过但超时未结束 → 返回 False + warning
+        修了原"必须先观测 RUNNING 才算完成"的快动作 bug：快动作可能在轮询间隔内
+        已完成，grace 期内没抓到 RUNNING 就走估时，不再空等到超时。
         """
-        start = time.time()
-        deadline = start + timeout
-        entered_running = False
+        deadline = time.time() + timeout
+        grace_deadline = time.time() + grace
+        entered = False
+        # grace 期：等待进入 RUNNING
+        while time.time() < grace_deadline:
+            s = self._get_action_status()
+            if s == 100:  # RUNNING
+                entered = True
+                break
+            self._sleep(0.08)
+        if not entered:
+            return False  # status 未切到 RUNNING，调用方走估时兜底
+        # 已进入 RUNNING，等其结束（到 deadline）
         while time.time() < deadline:
             s = self._get_action_status()
-            if s is not None:
-                if s == 100:  # RUNNING
-                    entered_running = True
-                elif entered_running:  # 之前在 RUNNING，现在不是 → 完成
-                    return True
-            self._sleep(0.15)
+            if s is not None and s != 100:  # 离开 RUNNING（IDLE/TRANSITION）
+                return True
+            self._sleep(0.1)
         logger.warning(f"⏱️ 动作等待超时({timeout}s)，status={self._get_action_status()}")
         return False
 
@@ -607,6 +635,9 @@ class X2Node(Node):
             "play_resource": self._play_resource,
             "run_task": self._do_run_task,
             "run_node": self._do_run_node,
+            "slam_command": self._do_slam_command,
+            "get_map": self._do_get_map,
+            "relocalize": self._do_relocalize,
         }
         handler = action_map.get(cmd.action)
         if handler is None:
@@ -1061,6 +1092,110 @@ class X2Node(Node):
             return {"ok": False, "error": str(e), "node_id": step.get("id", "")}
         finally:
             self._node_running_id = ""
+
+    # ── SLAM（建图/取图/重定位）──
+    def _on_slam_odom(self, msg: Odometry):
+        """缓存 SLAM 激光定位结果（/slam/lidar_odom）"""
+        p = msg.pose.pose.position
+        q = msg.pose.pose.orientation
+        self.slam_pose = {
+            "x": round(p.x, 3), "y": round(p.y, 3), "z": round(p.z, 3),
+            "qx": round(q.x, 4), "qy": round(q.y, 4), "qz": round(q.z, 4), "qw": round(q.w, 4),
+            "ts": time.time(),
+        }
+
+    def _do_slam_command(self, cmd: str) -> dict:
+        """发 SLAM 指令到 /integrated_command
+        cmd: 'start_mapping' / 'stop_mapping:<name>' / 'start_relocalization:<map_id>'
+        """
+        msg = String()
+        msg.data = cmd
+        self.slam_cmd_pub.publish(msg)
+        logger.info(f"🗺️ SLAM 指令: {cmd}")
+        return {"ok": True, "cmd": cmd}
+
+    def _do_get_map(self, map_name: str) -> dict:
+        """取地图（GetStoredMapByName）→ 读 map_path PNG 转 base64 + 拓扑点"""
+        from .retry import call_with_retry
+        import base64
+
+        if not self.get_map_client.wait_for_service(timeout_sec=1.0):
+            return {"ok": False, "error": "GetStoredMapByName 服务不可用"}
+
+        def build():
+            req = GetStoredMapByName.Request()
+            req.header = Header()
+            req.header.stamp = self.get_clock().now().to_msg()
+            req.map_name = map_name
+            return req
+        # 地图响应可能大，单次 timeout 30s 不重试（避免重复大响应）
+        resp = call_with_retry(self, self.get_map_client, build, "GetStoredMapByName", timeout=30.0, retries=1)
+        if resp is None:
+            return {"ok": False, "error": "取图超时"}
+        if resp.code != 0:
+            return {"ok": False, "error": f"取图失败 code={resp.code}"}
+
+        map_base64 = ""
+        if resp.map_path:
+            try:
+                with open(resp.map_path, "rb") as f:
+                    map_base64 = base64.b64encode(f.read()).decode("ascii")
+            except Exception as e:
+                logger.warning(f"⚠ 读地图 PNG 失败 {resp.map_path}: {e}")
+
+        navi_points = [
+            {"point_id": n.point_id, "x": round(n.navi_point.x, 1), "y": round(n.navi_point.y, 1),
+             "theta": round(n.navi_point.theta, 3)}
+            for n in resp.navi_points
+        ]
+        regions = [
+            {"type": r.type, "drawing_type": r.drawing_type, "name": r.name,
+             "polygon": [[round(pt.x, 1), round(pt.y, 1)] for pt in r.polygon.points]}
+            for r in resp.regions
+        ]
+        logger.info(f"🗺️ 取图成功: {map_name} (id={resp.map_id}, {resp.map_info.width}x{resp.map_info.height}, "
+                    f"{len(navi_points)}导航点, {len(regions)}区域)")
+        return {
+            "ok": True, "map_id": resp.map_id, "map_base64": map_base64,
+            "map_info": {
+                "resolution": resp.map_info.resolution,
+                "width": resp.map_info.width,
+                "height": resp.map_info.height,
+                "origin_x": resp.map_info.origin.position.x,
+                "origin_y": resp.map_info.origin.position.y,
+            },
+            "navi_points": navi_points, "regions": regions,
+        }
+
+    def _do_relocalize(self, map_id: str, x: float, y: float) -> dict:
+        """重定位：发 start_relocalization:<map_id> → 延迟1s 发 relocalization_pose(像素) → 等 lidar_odom(30s超时)"""
+        # 1. 发重定位指令
+        cmd_msg = String()
+        cmd_msg.data = f"start_relocalization:{map_id}"
+        self.slam_cmd_pub.publish(cmd_msg)
+        logger.info(f"🗺️ 重定位指令: {cmd_msg.data}")
+        # 2. 延迟 1s 发初始位姿（像素坐标）
+        self._sleep(1.0)
+        pose_msg = Pose()
+        pose_msg.position.x = float(x)
+        pose_msg.position.y = float(y)
+        pose_msg.position.z = 0.0
+        pose_msg.orientation.x = 0.0
+        pose_msg.orientation.y = 0.0
+        pose_msg.orientation.z = 0.0
+        pose_msg.orientation.w = 1.0
+        self.reloc_pose_pub.publish(pose_msg)
+        logger.info(f"🗺️ 已发重定位位姿(像素): x={x} y={y}")
+        # 3. 等 lidar_odom 收到新帧（= 重定位成功），30s 超时
+        start = time.time()
+        deadline = start + 30.0
+        while time.time() < deadline:
+            if self.slam_pose.get("ts", 0.0) > start:
+                logger.info(f"🗺️ 重定位成功: x={self.slam_pose.get('x')} y={self.slam_pose.get('y')}")
+                return {"ok": True, "pose": dict(self.slam_pose)}
+            self._sleep(0.2)
+        logger.warning("🗺️ 重定位超时（30s 未收到 lidar_odom）")
+        return {"ok": False, "error": "重定位超时（30s 未收到 lidar_odom）"}
 
 
 # ── 模块级引用（供 routes 直接使用）──
