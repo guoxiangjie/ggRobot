@@ -398,6 +398,10 @@ onBeforeUnmount(stopStatePolling)
   color: var(--accent);
   box-shadow: 0 0 12px rgba(77, 166, 255, 0.35);
 }
+[data-theme="light"] .dpad-btn.active {
+  background: rgba(43, 143, 230, 0.14);
+  box-shadow: 0 0 12px rgba(43, 143, 230, 0.25);
+}
 
 .dpad-center {
   background: transparent;

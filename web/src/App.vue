@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, h, computed, type Component } from 'vue'
 import { storeToRefs } from 'pinia'
-import { NLayout, NLayoutHeader, NLayoutContent, NMenu, NConfigProvider, NMessageProvider, darkTheme, zhCN, NTag, type MenuOption } from 'naive-ui'
+import { NLayout, NLayoutHeader, NLayoutContent, NMenu, NConfigProvider, NMessageProvider, darkTheme, zhCN, NTag, NButton, type MenuOption } from 'naive-ui'
 import { useRouter, useRoute } from 'vue-router'
 import { useConnectionStore } from '@/stores/connection'
 import IconDashboard from '~icons/mdi/view-dashboard-outline'
@@ -21,12 +21,17 @@ import IconSystem from '~icons/mdi/cog-outline'
 import IconLinkcraft from '~icons/mdi/human-handsup'
 import IconLanConnect from '~icons/mdi/lan-connect'
 import IconLanDisconnect from '~icons/mdi/lan-disconnect'
+import IconWeatherSunny from '~icons/mdi/weather-sunny'
+import IconWeatherNight from '~icons/mdi/weather-night'
+import { useThemeStore } from '@/stores/theme'
 
 const router = useRouter()
 const route = useRoute()
 const conn = useConnectionStore()
 const fullscreen = computed(() => !!route.meta.fullscreen)
 const { connected, connecting } = storeToRefs(conn)
+const theme = useThemeStore()
+const { mode } = storeToRefs(theme)
 
 onMounted(() => {
   conn.autoConnect()
@@ -74,7 +79,7 @@ function onMenuChange(key: string) {
 </script>
 
 <template>
-  <NConfigProvider :theme="darkTheme" :locale="zhCN">
+  <NConfigProvider :theme="mode === 'dark' ? darkTheme : null" :locale="zhCN">
     <NMessageProvider>
     <router-view v-if="fullscreen" v-slot="{ Component }">
       <keep-alive><component :is="Component" /></keep-alive>
@@ -96,6 +101,10 @@ function onMenuChange(key: string) {
               {{ connecting ? '连接中...' : (connected ? '已连接' : '未连接') }}
             </NTag>
           </div>
+          <NButton quaternary circle size="small" class="theme-toggle" :title="mode === 'dark' ? '切到亮色' : '切到暗色'" @click="theme.toggle()">
+            <IconWeatherSunny v-if="mode === 'dark'" style="font-size:18px" />
+            <IconWeatherNight v-else style="font-size:18px" />
+          </NButton>
         </div>
       </NLayoutHeader>
       <NLayoutContent class="main-content" :native-scrollbar="false">
@@ -123,7 +132,29 @@ function onMenuChange(key: string) {
   --danger: #f44b4b;
   --success: #3cc98e;
   --radius: 6px;
+  --border-hover: #2a3648;
+  --shadow: rgba(0, 0, 0, 0.28);
+  --overlay: rgba(255, 255, 255, 0.05);
 }
+[data-theme="light"] {
+  --bg: #f1f1f1;
+  --surface: #ffffff;
+  --border: #dddddd;
+  --text: #2b3340;
+  --text-secondary: #647080;
+  --accent: #2b8fe6;
+  --danger: #e5484d;
+  --success: #12a06b;
+  --radius: 6px;
+  --border-hover: #cccccc;
+  --shadow: rgba(15, 23, 42, 0.10);
+  --overlay: rgba(15, 23, 42, 0.04);
+}
+
+/* 亮色：naive NLayout 默认盖白底，强制用页面底色 #f1f1f1 */
+[data-theme="light"] .n-layout,
+[data-theme="light"] .n-layout-content,
+[data-theme="light"] .n-layout-scroll-container { background-color: var(--bg) !important; }
 
 body {
   margin: 0;

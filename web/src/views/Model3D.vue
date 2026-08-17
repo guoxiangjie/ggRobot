@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import * as THREE from 'three'
-import { createScene, type SceneContext } from '@/components/x2model/SceneSetup'
+import { createScene, applyTheme, type SceneContext } from '@/components/x2model/SceneSetup'
 import { loadX2Model, partLabel, setJointAngle, type JointControl } from '@/components/x2model/X2Model'
 import { NTag, NSlider, NButton, NInput, NPopover } from 'naive-ui'
+import { useThemeStore } from '@/stores/theme'
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const { mode } = storeToRefs(useThemeStore())
 const loading = ref(true)
 const error = ref('')
 const progress = ref(0)
@@ -50,7 +53,7 @@ onMounted(async () => {
   if (!canvasRef.value) return
 
   try {
-    ctx = createScene(canvasRef.value)
+    ctx = createScene(canvasRef.value, mode.value === 'light')
     handleResize()
 
     const result = await loadX2Model((pct) => { progress.value = pct })
@@ -131,6 +134,8 @@ onMounted(async () => {
     window.removeEventListener('resize', handleResize)
   })
 })
+
+watch(mode, (m) => { if (ctx) applyTheme(ctx, m === 'light') })
 
 onUnmounted(() => {
   ctx?.renderer.dispose()
@@ -244,7 +249,7 @@ onUnmounted(() => {
 .head p { margin: 0; font-size: 13px; color: var(--text-secondary); }
 
 .model-body { display: flex; gap: 16px; }
-.canvas-wrap { flex: 1; position: relative; height: 620px; background: #111620; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.canvas-wrap { flex: 1; position: relative; height: 620px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 
 .part-panel {
   width: 200px; flex-shrink: 0;
@@ -262,7 +267,7 @@ onUnmounted(() => {
 .presets { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
 .swatch { width: 22px; height: 22px; border-radius: 4px; border: 2px solid transparent; cursor: pointer; transition: border-color 0.15s; }
 .swatch:hover { border-color: var(--text-secondary); }
-.swatch.active { border-color: #fff; box-shadow: 0 0 4px rgba(255,255,255,0.3); }
+.swatch.active { border-color: #fff; box-shadow: 0 0 4px var(--overlay); }
 .hex-row { display: flex; }
 .hex-input { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 .tooltip-item { font-size: 12px; line-height: 1.6; white-space: nowrap; }
@@ -276,7 +281,7 @@ onUnmounted(() => {
 
 .progress-ring { position: relative; width: 80px; height: 80px; }
 .progress-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.ring-bg { fill: none; stroke: #1c2533; stroke-width: 6; }
+.ring-bg { fill: none; stroke: var(--border); stroke-width: 6; }
 .ring-fill { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; transition: stroke-dasharray 0.2s ease; }
 .ring-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: var(--accent); }
@@ -289,6 +294,6 @@ onUnmounted(() => {
 
 .hint {
   position: absolute; bottom: 12px; right: 16px;
-  font-size: 11px; color: #46566b;
+  font-size: 11px; color: var(--text-secondary);
 }
 </style>

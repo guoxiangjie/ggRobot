@@ -50,7 +50,7 @@ async function trigger(motion: number, area: number) {
   grid-column: span 2;  /* 预设动作按钮多，占两列加宽 */
 }
 
-.card:hover { border-color: #2a3648; }
+.card:hover { border-color: var(--border-hover); }
 
 .card-head {
   display: flex;

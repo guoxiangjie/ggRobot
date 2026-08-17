@@ -342,7 +342,7 @@ onDeactivated(stopBatchPoll)
 
     <!-- 连播进度条 -->
     <div class="batch-bar" v-if="batchRunning">
-      <NProgress :percentage="batchStatus.progress" :color="'#4da6ff'" :height="3" :border-radius="0"
+      <NProgress :percentage="batchStatus.progress" :color="'var(--accent)'" :height="3" :border-radius="0"
         style="position:absolute;top:0;left:0;right:0" />
       <span class="batch-text">▶ 连播中 · {{ batchStatus.current }}/{{ batchStatus.total }}</span>
     </div>
@@ -513,7 +513,7 @@ onDeactivated(stopBatchPoll)
   cursor: pointer; transition: all 0.12s; text-align: left; position: relative;
   font-family: inherit; color: var(--text);
 }
-.node-btn:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+.node-btn:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 4px 12px var(--shadow); }
 .node-btn:active:not(:disabled) { transform: translateY(0); }
 .node-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .node-btn.running { border-color: var(--accent); background: rgba(77,166,255,0.08); opacity: 1; }
@@ -537,7 +537,7 @@ onDeactivated(stopBatchPoll)
   position: sticky; bottom: 16px; margin-top: 16px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 16px; background: var(--surface); border: 1px solid var(--accent);
-  border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  border-radius: var(--radius); box-shadow: 0 4px 16px var(--shadow);
   font-size: 13px;
 }
 .float-actions { display: flex; gap: 8px; }

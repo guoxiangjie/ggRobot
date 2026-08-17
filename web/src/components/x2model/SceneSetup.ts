@@ -1,4 +1,4 @@
-/** Three.js 场景 — 干净渲染 */
+/** Three.js 场景 — 干净渲染（支持暗/亮主题）*/
 
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -11,22 +11,27 @@ export interface SceneContext {
   clock: THREE.Clock
 }
 
-export function createScene(canvas: HTMLCanvasElement): SceneContext {
+// 暗/亮主题的 3D 配色（背景 / 环境光 / 网格）。方向光保持白光为主，亮暗通用。
+const DARK = { bg: '#111620', amb: '#8896a9', ambI: 0.8, gridA: '#334155', gridB: '#111620' }
+const LIGHT = { bg: '#e8edf3', amb: '#ffffff', ambI: 0.6, gridA: '#c5cdd9', gridB: '#e8edf3' }
+
+export function createScene(canvas: HTMLCanvasElement, isLight = false): SceneContext {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false })
   renderer.setPixelRatio(window.devicePixelRatio)
   renderer.shadowMap.enabled = true
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.toneMappingExposure = 1.0
 
+  const c = isLight ? LIGHT : DARK
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color('#111620')
+  scene.background = new THREE.Color(c.bg)
 
   const camera = new THREE.PerspectiveCamera(45, 2, 0.1, 20)
   camera.position.set(2, 1.4, 2)
   camera.lookAt(0, 0.4, 0)
 
   // 环境光
-  scene.add(new THREE.AmbientLight('#8896a9', 0.8))
+  scene.add(new THREE.AmbientLight(c.amb, c.ambI))
 
   // 主光 右前上
   const key = new THREE.DirectionalLight('#ffffff', 5.0)
@@ -54,7 +59,7 @@ export function createScene(canvas: HTMLCanvasElement): SceneContext {
   front.position.set(0, 0.8, 2); scene.add(front)
 
   // 地面
-  const grid = new THREE.GridHelper(3, 20, '#334155', '#111620')
+  const grid = new THREE.GridHelper(3, 20, c.gridA, c.gridB)
   grid.position.y = -0.85; scene.add(grid)
 
   // 轨道
@@ -66,4 +71,24 @@ export function createScene(canvas: HTMLCanvasElement): SceneContext {
   controls.update()
 
   return { scene, camera, renderer, controls, clock: new THREE.Clock() }
+}
+
+/** 主题切换：改背景 + 环境光 + 重建网格（模型 mesh 不动，无重载闪烁）*/
+export function applyTheme(ctx: SceneContext, isLight: boolean) {
+  const c = isLight ? LIGHT : DARK
+  ctx.scene.background = new THREE.Color(c.bg)
+  for (const child of ctx.scene.children) {
+    if (child instanceof THREE.AmbientLight) {
+      child.color.set(c.amb)
+      child.intensity = c.ambI
+    }
+  }
+  const oldGrid = ctx.scene.children.find(o => o instanceof THREE.GridHelper) as THREE.GridHelper | undefined
+  if (oldGrid) {
+    ctx.scene.remove(oldGrid)
+    oldGrid.geometry?.dispose()
+    const grid = new THREE.GridHelper(3, 20, c.gridA, c.gridB)
+    grid.position.y = -0.85
+    ctx.scene.add(grid)
+  }
 }

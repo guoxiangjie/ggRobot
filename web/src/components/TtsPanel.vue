@@ -58,7 +58,7 @@ async function send() {
   transition: border-color 0.2s;
 }
 
-.card:hover { border-color: #2a3648; }
+.card:hover { border-color: var(--border-hover); }
 
 .card-head {
   display: flex;

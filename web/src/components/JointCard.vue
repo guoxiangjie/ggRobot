@@ -27,15 +27,15 @@ function short(n: string) { return n.replace(/_joint$/, '').replace(/^left_/, 'L
 
 <style scoped>
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; transition: border-color 0.2s; grid-column: span 2; }
-.card:hover { border-color: #2a3648; }
+.card:hover { border-color: var(--border-hover); }
 .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 14px; font-weight: 600; }
 .card-icon { font-size: 20px; color: var(--accent); }
 .card-label { color: var(--text); flex: 1; }
-.badge { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); background: #1c2533; padding: 2px 10px; border-radius: var(--radius); }
+.badge { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); background: var(--border); padding: 2px 10px; border-radius: var(--radius); }
 .table { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 .th { display: grid; grid-template-columns: 1fr 100px 100px; gap: 8px; padding: 6px 0; color: var(--text-secondary); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .tr { display: grid; grid-template-columns: 1fr 100px 100px; gap: 8px; padding: 4px 0; border-radius: var(--radius); transition: background 0.15s; }
-.tr:hover { background: rgba(255,255,255,0.02); }
+.tr:hover { background: var(--overlay); }
 .td-name { color: var(--text-secondary); }
 .td-pos { font-weight: 500; text-align: right; }
 .td-vel { color: var(--text-secondary); text-align: right; }

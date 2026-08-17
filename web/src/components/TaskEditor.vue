@@ -765,7 +765,7 @@ async function handleSave() {
 .flow-pane, .config-pane { display: flex; flex-direction: column; min-height: 0; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .flow-pane { width: 60%; flex-shrink: 0; }
 .config-pane { flex: 1; }
-.pane-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.pane-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--overlay); }
 .pane-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
 .pane-count { font-size: 11px; color: var(--text-secondary); opacity: 0.8; font-family: 'JetBrains Mono', monospace; }
 .config-head { justify-content: space-between; }
@@ -774,14 +774,14 @@ async function handleSave() {
 /* ── 左：链路 ── */
 .steps-list { display: flex; flex-direction: column; align-items: center; padding: 14px; }
 .step-marker { padding: 4px 16px; border-radius: 16px; font-size: 11px; font-weight: 700; background: #1a3a1a; border: 1px solid #3cc98e; color: #3cc98e; }
-.step-marker.end { background: #1a1a2a; border-color: #4da6ff; color: #4da6ff; }
+.step-marker.end { background: #1a1a2a; border-color: var(--accent); color: var(--accent); }
 .connector { width: 2px; height: 12px; background: var(--border); }
 
 .step-card { display: flex; flex-direction: column; gap: 8px; width: 100%; box-sizing: border-box; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }
 .step-card:hover { border-color: var(--accent); background: rgba(77,166,255,0.04); }
 .step-card.selected { border-color: var(--accent); background: rgba(77,166,255,0.08); box-shadow: 0 0 10px rgba(77,166,255,0.12); }
 .step-main { display: flex; align-items: center; gap: 12px; width: 100%; }
-.step-index { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-secondary); }
+.step-index { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--text-secondary); }
 .step-icon { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .step-body { flex: 1; min-width: 0; }
 .step-type { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
@@ -792,7 +792,7 @@ async function handleSave() {
 /* 块卡片（并行/分支） */
 .block-card { width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .block-card.selected { border-color: var(--accent); box-shadow: 0 0 10px rgba(77,166,255,0.12); }
-.block-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+.block-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); background: var(--overlay); }
 .block-head:hover { background: rgba(77,166,255,0.05); }
 .block-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; background: rgba(33,150,243,0.15); color: #64b5f6; border: 1px solid rgba(33,150,243,0.3); }
 .branch-badge { background: rgba(38,166,154,0.15); color: #4db6ac; border-color: rgba(38,166,154,0.3); }
@@ -811,7 +811,7 @@ async function handleSave() {
 .lane-label.yes { background: rgba(60,201,142,0.15); color: #3cc98e; }
 .lane-label.no { background: rgba(244,75,75,0.15); color: #f44b4b; }
 
-.mini-card { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: rgba(0,0,0,0.18); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: all 0.12s; }
+.mini-card { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--overlay); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: all 0.12s; }
 .mini-card:hover { border-color: var(--accent); }
 .mini-card.selected { border-color: var(--accent); background: rgba(77,166,255,0.08); }
 .mini-icon { flex-shrink: 0; display: flex; }
@@ -831,12 +831,12 @@ async function handleSave() {
 .config-empty-sub { font-size: 11px; opacity: 0.7; }
 .config-footer { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); }
 
-.branch-box, .lane-box { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: rgba(0,0,0,0.12); border: 1px solid var(--border); border-radius: var(--radius); }
+.branch-box, .lane-box { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--overlay); border: 1px solid var(--border); border-radius: var(--radius); }
 .branch-box-head { display: flex; align-items: center; justify-content: space-between; }
 .lane-box-head { display: flex; align-items: center; }
 
 /* ── TTS 挂载区 ── */
-.mount-zone { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; background: rgba(0,0,0,0.18); border: 1px dashed var(--border); border-radius: 6px; }
+.mount-zone { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; background: var(--overlay); border: 1px dashed var(--border); border-radius: 6px; }
 .mount-item { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
 .motion-item { background: rgba(255,152,0,0.14); color: #ffb74d; border: 1px solid rgba(255,152,0,0.3); }
 .linkcraft-item { background: rgba(0,172,193,0.14); color: #4dd0e1; border: 1px solid rgba(0,172,193,0.3); }

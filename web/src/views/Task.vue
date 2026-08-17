@@ -147,7 +147,7 @@ onUnmounted(stopPolling)
 
     <!-- ── 运行状态条 ── -->
     <div class="status-bar" v-if="taskStatus.running">
-      <NProgress :percentage="taskStatus.progress" :color="'#4da6ff'" :height="3" :border-radius="0"
+      <NProgress :percentage="taskStatus.progress" :color="'var(--accent)'" :height="3" :border-radius="0"
         style="position:absolute;top:0;left:0;right:0" />
       <span class="status-text">▶ {{ taskStatus.task_name }} · {{ taskStatus.current }}/{{ taskStatus.total }}</span>
     </div>
@@ -251,9 +251,12 @@ onUnmounted(stopPolling)
 .toast { position: fixed; top: 68px; left: 50%; transform: translateX(-50%); z-index: 9999;
   padding: 8px 24px; border-radius: 6px; font-size: 13px; font-weight: 600;
   pointer-events: none; animation: toastIn 0.25s ease; }
-.toast-success { background: #1a3a2a; color: #3cc98e; border: 1px solid #3cc98e; }
-.toast-error { background: #3a1a1a; color: #f44b4b; border: 1px solid #f44b4b; }
+.toast-success { background: #1a3a2a; color: var(--success); border: 1px solid var(--success); }
+.toast-error { background: #3a1a1a; color: var(--danger); border: 1px solid var(--danger); }
 .toast-warning { background: #3a301a; color: #f0a020; border: 1px solid #f0a020; }
+[data-theme="light"] .toast-success { background: #e7f6ee; }
+[data-theme="light"] .toast-error { background: #fdeaea; }
+[data-theme="light"] .toast-warning { background: #fdf3e0; }
 @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 
 .ai-box { display: flex; flex-direction: column; gap: 12px; }

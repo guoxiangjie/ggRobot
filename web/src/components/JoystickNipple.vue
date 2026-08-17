@@ -53,7 +53,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  background: radial-gradient(circle, var(--overlay), var(--overlay));
   border: 1px solid var(--border);
   touch-action: none;   /* 阻止触摸时页面滚动 */
 }

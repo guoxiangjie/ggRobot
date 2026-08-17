@@ -259,6 +259,9 @@ onDeactivated(stopTimer)   // keep-alive 切走也停速
   background: #1a3a5c;
   border-color: var(--accent);
 }
+[data-theme="light"] .key-btn:active:not(:disabled) {
+  background: rgba(43, 143, 230, 0.14);
+}
 .key-btn.busy { opacity: 0.6; }
 .sticks {
   display: flex;

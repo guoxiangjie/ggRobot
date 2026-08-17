@@ -95,7 +95,7 @@ function barColor(pct: number): string {
   transition: border-color 0.2s;
 }
 
-.card:hover { border-color: #2a3648; }
+.card:hover { border-color: var(--border-hover); }
 
 .card-head {
   display: flex;
@@ -131,7 +131,7 @@ function barColor(pct: number): string {
 
 .ring-bg {
   fill: none;
-  stroke: #1c2533;
+  stroke: var(--border);
   stroke-width: 6;
 }
 
