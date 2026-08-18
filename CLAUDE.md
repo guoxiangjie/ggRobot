@@ -1,10 +1,14 @@
-# ggRobot — 灵犀 X2 机器人 Web 控制台 v2.0
+# ggRobot — 机器人通用平台 v2.0
 
-## 项目定位
+## 项目定位（2.0 架构）
 
-在智元 X2 人形机器人的 Orin 计算单元（PC2, 10.0.1.41）上运行的 Web 控制台。用户通过浏览器即可操控机器人的所有交互功能：TTS语音、预设动作、速度遥控、表情、音量、媒体播放，并实时查看传感器状态和 3D 孪生模型。
+**多机器人通用管理平台**：Electron 桌面客户端（Mac/Win 双击安装，同局域网）+ 机器人 agent（.deb 分发、systemd 常驻、纯 API）。支持多型号接入（X2/A2/A3/机器狗），能力契约（`contracts/catalog.json`）是三端唯一真源。全套架构决策见记忆 `ggrobot-2-0-platform.md` 与 git 分支 `2.0` 的提交历史。
 
-开发机是 Mac M2，网线直连 X2 二次开发网口（Mac IP 10.0.1.2）。
+- **平台**（`platform/`）：desktop = Electron-vite + React + Semi Design(暗色) + Lucide + Zustand；server = FastAPI sidecar（127.0.0.1:8310）+ SQLite
+- **agent**（`agents/x2/`）：FastAPI + rclpy（:8300），token 鉴权 + SN 上报（AGIBOT_SN）+ 单机会话锁；`sudo apt install` 免密装 deb
+- **web/**：1.0 的 Vue3 前端，**legacy 保留仅作 React 重写参考**（WS 时序 5s/15s/3s、20Hz 遥控+全零停止、相机 4B+JPEG 帧、motions 动作表都在里面），迁完即删
+
+开发机 Mac M2；实机 `agi@10.10.4.175`（ip.txt 首行，sudoers 免密仅 `/usr/bin/apt`）。
 
 ## 硬件三计算单元（铁律）
 
@@ -14,34 +18,35 @@
 | **PC2 Orin NX** | 10.0.1.41 | ✅ 本项目运行位置，SSH 账号 agi |
 | **PC3 交互单元** | 10.0.1.42 | ⚠️ 仅放音视频文件，不改系统（屏幕/扬声器） |
 
-## 目录结构
+## 目录结构（2.0，分支 `2.0`）
 
 ```
 ggRobot/
-├── gg_robot/           ← Python 后端 (FastAPI + rclpy/ROS2)
-│   ├── __main__.py     ← 入口：启动rclpy守护线程 → 等待就绪 → 启动FastAPI
-│   ├── server.py       ← FastAPI 应用工厂（路由+CORS+静态文件+lifespan）
-│   ├── node.py         ← 核心ROS2节点：18个Service客户端+传感器订阅+命令队列
-│   ├── schemas.py      ← Pydantic 请求/响应模型
-│   ├── retry.py        ← 跨板Service调用重试封装（3次×3.0s，可按接口调）
-│   ├── routes/         ← REST API 路由（tts/motion/velocity/system/emoji/media/volume/mic/mode/sequence/camera/task/resource/phone/project）
-│   └── ws/stream.py    ← WebSocket端点 + 传感器推送 + 相机帧推送 + 键盘遥控
-├── web/                ← Vue3 PWA 前端源码
-│   └── src/
-│       ├── api/        ← HTTP+WebSocket客户端封装
-│       ├── stores/     ← Pinia状态（connection + robot）
-│       ├── views/      ← 12个页面（Dashboard/Control/Task/Project/Camera/Model3D/Media/Emoji/Linkcraft/System/Phone）
-│       ├── components/ ← UI组件（BatteryCard/ImuCard/JointCard/MotionPanel/TtsPanel/VolumePanel/x2model）
-│       └── types/      ← AimDK消息类型定义
-├── static/             ← 前端构建产物（FastAPI直接托管）
-├── navigation/         ← 激光避障独立ROS2节点（点云→地面去除→扇区→决策→安全速度）
-├── config/robot.yaml   ← 参数配置
-├── docs/               ← 知识库文档
-│   ├── api_reference.md ← AimDK v1.0 完整API参考（62个接口）
-│   └── dev_guide.md    ← 开发指南
-├── scripts/            ← 运维脚本
-├── Makefile            ← 一键构建/部署/启动
-└── requirements.txt    ← fastapi/uvicorn/websockets/python-multipart
+├── agents/x2/                  ← X2 机器人 agent
+│   ├── gg_robot/               ← FastAPI + rclpy/ROS2（原 1.0 后端演进，纯 API 化）
+│   │   ├── __main__.py         ← 入口：rclpy守护线程 → FastAPI（:8300）
+│   │   ├── server.py           ← 应用工厂（token鉴权 + 会话锁 + CORS）
+│   │   ├── node.py             ← ROS2节点：19个Service客户端+传感器订阅+命令队列
+│   │   ├── capabilities.py     ← 能力契约上报（catalog v1 格式）
+│   │   ├── motions_data.py     ← 30项预设动作权威清单（STAND前置约束）
+│   │   ├── routes/             ← REST 路由（tts/motion/velocity/.../health/session）
+│   │   └── ws/stream.py        ← WS v2 协议（wildcard订阅 + 二进制相机帧）
+│   ├── packaging/              ← .deb 打包（control/postinst/prerm/start.sh/build.sh）
+│   ├── navigation/             ← 激光避障独立ROS2节点
+│   └── config/robot.yaml       ← 参数配置
+├── platform/                   ← 桌面平台
+│   ├── desktop/                ← Electron-vite + React + Semi Design（GG Robot 客户端）
+│   └── server/                 ← ggplatform：FastAPI sidecar（127.0.0.1:8310）+ SQLite
+├── contracts/                  ← 能力类型目录 v1（三端共享）
+│   ├── catalog.json            ← 唯一真源（13个能力类型）
+│   ├── gen.py                  ← 生成器：make contracts
+│   ├── ts/catalog.ts           ← 生成物（renderer）
+│   └── py/catalog.py           ← 生成物（platform/agent）
+├── web/                        ← 1.0 Vue3 前端（legacy 参考，勿新增功能）
+├── docs/                       ← 知识库（api_reference.md / dev_guide.md / patents）
+├── Makefile                    ← agent-deb/agent-deploy/contracts/...
+├── ip.txt                      ← 实机地址（首行 agi@10.10.4.175）
+└── requirements.txt            ← agent 侧 Python 依赖
 ```
 
 ## 核心架构
@@ -100,7 +105,7 @@ ggRobot/
 - `RequestHeader header` → `req.header.stamp`（SetMcPresetMotion, SetMcAction）
 - `CommonRequest request` → `req.request.header.stamp`（PlayAudioFile, GetMcAction, SetMcInputSource）
 
-## 激光避障模块 (navigation/avoidance.py)
+## 激光避障模块 (agents/x2/navigation/avoidance.py)
 
 独立 ROS2 节点，实现了安全过滤器模式的激光避障：
 
@@ -116,13 +121,17 @@ ggRobot/
 ## 开发命令
 
 ```bash
-make web      # 构建前端（pnpm build→static/）
-make deploy   # rsync部署到Orin（ORIN_HOST从ip.txt读取）
-make start    # SSH到Orin启动服务（自动source ROS2环境）
-make stop     # 停止Orin上的服务
-make install  # 安装Orin上的Python依赖
-make all      # web + deploy一键
+make contracts     # catalog.json → 生成 ts/py 契约代码
+make agent-deb     # 构建 X2 agent .deb（产物 agents/x2/packaging/build/）
+make agent-deploy  # scp deb 到机器人 + sudo apt install（免密）
+make agent-stop    # 停机器人上 1.0 旧服务（装机前清理 8000）
+make agent-status  # 查看 systemd 状态 + /api/health
+make deploy/start  # 开发期调试：rsync 源码 + SSH 前台跑（正式分发走 deb）
 ```
+
+平台桌面端（M4 后）：`cd platform/desktop && pnpm dev`（自动拉起 platform/server sidecar）。
+
+**sudoers 铁律**：机器人 agi 免密仅 `/usr/bin/apt`——远程命令只用 `sudo -n apt install`，systemctl/写 /etc 全部收在 deb 的 postinst 内。
 
 ## 关键注意事项
 

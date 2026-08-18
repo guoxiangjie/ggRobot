@@ -1,84 +1,78 @@
-# ggRobot — X2 机器人 Web 控制台
+# ggRobot 2.0 — 机器人通用平台（桌面客户端 + 机器人 agent）
 #
-# 部署前请先在机器人上手动停服：pkill -f 'python -m gg_robot'
+# 目录结构:
+#   agents/x2/     X2 机器人 agent（FastAPI + rclpy，纯 API，.deb 分发）
+#   platform/      桌面平台（desktop: Electron-vite + React + Semi / server: FastAPI + SQLite）
+#   contracts/     能力类型目录 v1（三端共享，catalog.json 唯一真源）
+#   web/           1.0 Vue 前端（legacy，仅作 React 重写参考，不再构建部署）
 #
 # 用法:
-#   make build     # 构建前端
-#   make deploy    # 增量化部署（不删旧目录）
-#   make ship      # 构建前端 + 清旧目录 + 全新部署
-#   make stop      # 停远端服务（杀进程 + 释放 8000）
-#   make start     # SSH 前台启动服务
-#   make restart   # stop + start（干净重启，解决 address already in use）
+#   make agent-deb      # 构建 X2 agent .deb（M2 提供）
+#   make agent-deploy   # 推 deb 到机器人并安装（M2 提供）
+#   make agent-stop     # 停机器人上 1.0 旧服务（agent 装机前的清理）
+#   make platform-dev   # 本地开发桌面平台（M4 提供）
+#   make contracts      # 由 catalog.json 重新生成 TS/Python 契约代码
 
 ORIN_HOST := $(shell grep -v '^\#' ip.txt 2>/dev/null | head -1)
 ORIN_DIR  ?= ~/ggRobot
 
+.PHONY: contracts agent-deb agent-deploy agent-stop agent-status deploy start stop
+
+# ── 契约生成（contracts/catalog.json → ts/py）──
+contracts:
+	@echo "🔧 生成契约代码..."
+	cd contracts && python3 gen.py
+	@echo "✅ 已生成 contracts/ts/catalog.ts + contracts/py/catalog.py"
+
+# ── agent .deb 构建/部署（M2 实现细节）──
+agent-deb:
+	@echo "（M2 里程碑提供）构建 agents/x2 → dist/ggrobot-agent_*.deb"
+	@bash agents/x2/packaging/build.sh
+
+agent-deploy: agent-deb
+	@echo "📦 推送并安装 deb 到 $(ORIN_HOST)..."
+	scp agents/x2/packaging/build/*.deb $(ORIN_HOST):/tmp/
+	ssh $(ORIN_HOST) "sudo -n apt install -y --reinstall /tmp/ggrobot-agent_*.deb"
+	@echo "✅ 安装完成: ssh $(ORIN_HOST) 'systemctl status ggrobot-agent'"
+
+agent-status:
+	ssh $(ORIN_HOST) "systemctl status ggrobot-agent --no-pager -l | head -20; curl -s http://127.0.0.1:8300/api/health"
+
+# ── 停机器人上的 1.0 旧服务（装机前清理，释放 8000）──
+agent-stop:
+	@echo "🛑 停止 $(ORIN_HOST) 上的 1.0 服务..."
+	-ssh $(ORIN_HOST) "pkill -f gg_robot; sleep 2; pkill -9 -f gg_robot 2>/dev/null; sleep 0.5; ss -tlnp 2>/dev/null | grep ':8000' || echo '✅ 8000 已释放'"
+
+# ── 开发期调试：rsync 源码到机器人（正式分发走 deb，勿用于生产）──
 RSYNC_FLAGS = -avz \
 	--exclude '.git' \
 	--exclude '.claude' \
 	--exclude '.idea' \
 	--exclude '.DS_Store' \
-	--exclude '.gitignore' \
 	--exclude '__pycache__' \
 	--exclude '*.pyc' \
 	--exclude 'web' \
 	--exclude 'docs' \
-	--exclude 'scripts' \
+	--exclude 'platform' \
+	--exclude 'contracts' \
 	--exclude 'CLAUDE.md' \
 	--exclude 'Makefile' \
 	--exclude 'README.md' \
 	--exclude 'ip.txt' \
-	--exclude 'logo.svg'
+	--exclude 'logo.svg' \
+	--exclude 'ggRobot-data'
 
-.PHONY: build deploy clean ship start stop restart migrate-data
-
-# ── 前端构建 ──
-build:
-	@echo "🔨 构建前端..."
-	cd web && pnpm build
-	@rm -rf static && mkdir -p static
-	@cp -r web/dist/* static/
-	@echo "✅ 前端已构建到 static/"
-
-# ── 增量部署（不删旧目录）──
 deploy:
-	@echo "📦 部署到 $(ORIN_HOST):$(ORIN_DIR)..."
+	@echo "📦 rsync agents/x2 到 $(ORIN_HOST):$(ORIN_DIR)（开发调试用）..."
 	rsync $(RSYNC_FLAGS) ./ $(ORIN_HOST):$(ORIN_DIR)
-	@echo "✅ 部署完成"
 
-# ── 删远端旧目录 ──
-clean:
-	@echo "🗑 删除 $(ORIN_HOST):$(ORIN_DIR)..."
-	ssh $(ORIN_HOST) "rm -rf $(ORIN_DIR)"
-	@echo "✅ 已清除"
-
-# ── 一键交付：构建 + 清旧 + 全量部署 ──
-ship: build clean deploy
-	@echo ""
-	@echo "✅ 构建+全量部署完成"
-	@echo "   启动: make start"
-
-# ── 停止远端服务（杀进程 + 释放 8000）──
-stop:
-	@echo "🛑 停止 $(ORIN_HOST) 上的 ggRobot..."
-	-ssh $(ORIN_HOST) "pkill -f gg_robot; sleep 2; pkill -9 -f gg_robot 2>/dev/null; sleep 0.5; ss -tlnp 2>/dev/null | grep ':8000' || echo '✅ 8000 已释放'"
-
-# ── 一次性迁移：把旧版存放在部署目录内的用户数据搬到 ~/ggRobot-data ──
-# 升级到"数据独立目录"版本前先跑一次，否则 make ship 的 clean 会清掉旧数据。
-# 之后每次 ship 只清代码目录 ~/ggRobot，不再影响用户数据。
-migrate-data:
-	@echo "📦 迁移用户数据到 ~/ggRobot-data..."
-	ssh $(ORIN_HOST) "mkdir -p ~/ggRobot-data && for d in tasks projects media; do if [ -d ~/ggRobot/$$d ] && [ ! -e ~/ggRobot-data/$$d ]; then mv ~/ggRobot/$$d ~/ggRobot-data/; fi; done; if [ -f ~/ggRobot/phone_keys.json ] && [ ! -e ~/ggRobot-data/phone_keys.json ]; then mv ~/ggRobot/phone_keys.json ~/ggRobot-data/; fi; ls -A ~/ggRobot-data"
-	@echo "✅ 迁移完成（首次部署新代码后启动服务也会自动迁移兜底）"
-
-# ── 干净重启（先停后启，避免端口占用）──
-restart: stop start
-
-# ── SSH 启动服务 ──
+# ── 开发期调试：SSH 前台跑 agent（未走 systemd，调试用）──
 start:
-	@echo "🚀 启动 ggRobot..."
+	@echo "🚀 前台启动 agent（调试）..."
 	ssh -t $(ORIN_HOST) "\
 		source /opt/ros/humble/setup.bash && \
 		source ~/aimdk/install/local_setup.bash && \
-		cd $(ORIN_DIR) && \
+		cd $(ORIN_DIR)/agents/x2 && \
 		python -m gg_robot"
+
+stop: agent-stop
