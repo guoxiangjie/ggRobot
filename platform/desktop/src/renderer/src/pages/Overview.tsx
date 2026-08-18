@@ -43,7 +43,7 @@ export default function Overview(): JSX.Element {
       ) : (
         <div className="robot-grid">
           {robots.map((r) => (
-            <div key={r.id} onClick={() => nav('/robots')}>
+            <div key={r.id} onClick={() => nav(`/robot/${r.id}/dashboard`)}>
               <Card bodyStyle={{ padding: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                 <div style={{

@@ -37,22 +37,30 @@ function logFile(): number {
 }
 
 function spawnOnce(port: number): ChildProcess {
-  const serverRoot = path.resolve(app.getAppPath(), is.dev ? '../../server' : '../../server')
   let file: string
   let args: string[]
+  let cwd: string
   if (is.dev) {
+    const serverRoot = path.resolve(app.getAppPath(), '../../server')
     const venvPy = path.resolve(serverRoot, '.venv/bin/python')
     file = fs.existsSync(venvPy) ? venvPy : 'python3'
     args = ['-m', 'ggplatform']
+    cwd = serverRoot
   } else {
-    file = path.join(process.resourcesPath, 'sidecar', 'ggplatform')
+    // PyInstaller --onedir：可执行文件在同名目录内
+    file = path.join(process.resourcesPath, 'sidecar', 'ggplatform', 'ggplatform')
     args = ['--port', String(port)]
+    cwd = path.dirname(file)   // prod 无 server 源码目录，cwd 用二进制所在目录
   }
   const p = spawn(file, args, {
-    cwd: serverRoot,
+    cwd,
     env: { ...process.env, GG_PLATFORM_PORT: String(port), PYTHONUNBUFFERED: '1' },
   })
   const fd = logFile()
+  p.on('error', (e) => {
+    try { fs.writeSync(fd, `[spawn-error] ${e.message}\n`) } catch { /* */ }
+    console.error('[sidecar] spawn 失败:', e)
+  })
   p.stdout?.on('data', (d) => fs.writeSync(fd, d))
   p.stderr?.on('data', (d) => fs.writeSync(fd, d))
   return p

@@ -16,7 +16,28 @@
 ORIN_HOST := $(shell grep -v '^\#' ip.txt 2>/dev/null | head -1)
 ORIN_DIR  ?= ~/ggRobot
 
-.PHONY: contracts agent-deb agent-deploy agent-stop agent-status deploy start stop
+.PHONY: contracts agent-deb agent-deploy agent-stop agent-status deploy start stop sidecar-build desktop-package
+
+# ── 平台 sidecar 打包（PyInstaller onedir → desktop/resources/sidecar/）──
+sidecar-build:
+	cd platform/server && .venv/bin/pip install -q pyinstaller
+	cd platform/server && .venv/bin/pyinstaller --name ggplatform --onedir --noconfirm \
+		--collect-all sqlmodel --collect-all uvicorn --clean \
+		run.py
+	rm -rf platform/desktop/resources/sidecar
+	mkdir -p platform/desktop/resources/sidecar
+	cp -R platform/server/dist/ggplatform/ platform/desktop/resources/sidecar/ggplatform
+	rm -rf platform/server/dist platform/server/build
+	@echo "✅ sidecar → platform/desktop/resources/sidecar/ggplatform"
+
+# ── 桌面 App 出 dmg（sidecar + electron-builder）──
+desktop-package: sidecar-build
+	cd platform/desktop && ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" pnpm package
+	@echo "✅ dmg → platform/desktop/release/"
+
+# ── 桌面 App 目录版（免打包调试，快速验证）──
+desktop-dir: sidecar-build
+	cd platform/desktop && ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" pnpm package:dir
 
 # ── 契约生成（contracts/catalog.json → ts/py）──
 contracts:

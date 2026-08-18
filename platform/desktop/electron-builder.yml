@@ -1,5 +1,6 @@
 appId: com.ggrobot.platform
 productName: GG Robot
+npmRebuild: false   # ssh2 用纯 JS fallback（cpu-features 原生编译失败不阻塞）
 directories:
   output: release/${version}
 files:

@@ -5,6 +5,10 @@ import { useAppStore } from '@/stores/app'
 import Overview from '@/pages/Overview'
 import RobotList from '@/pages/RobotList'
 import AddRobot from '@/pages/AddRobot'
+import RobotLayout from '@/pages/robot/RobotLayout'
+import DashboardTab from '@/pages/robot/DashboardTab'
+import ControlTab from '@/pages/robot/ControlTab'
+import CameraTab from '@/pages/robot/CameraTab'
 
 function Sidebar(): JSX.Element {
   const nav = useNavigate()
@@ -52,6 +56,12 @@ export default function App(): JSX.Element {
             <Route path="/" element={<Overview />} />
             <Route path="/robots" element={<RobotList />} />
             <Route path="/robots/add" element={<AddRobot />} />
+            <Route path="/robot/:id" element={<RobotLayout />}>
+              <Route index element={<DashboardTab />} />
+              <Route path="dashboard" element={<DashboardTab />} />
+              <Route path="control" element={<ControlTab />} />
+              <Route path="camera" element={<CameraTab />} />
+            </Route>
           </Routes>
         </div>
       </div>
