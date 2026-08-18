@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 
 def register_routes(app: FastAPI):
+    from .meta import router as meta_router
     from .tts import router as tts_router
     from .motion import router as motion_router
     from .velocity import router as velocity_router
@@ -22,6 +23,7 @@ def register_routes(app: FastAPI):
     from .project import router as project_router
     from .slam import router as slam_router
 
+    app.include_router(meta_router)
     app.include_router(tts_router)
     app.include_router(motion_router)
     app.include_router(velocity_router)

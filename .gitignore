@@ -26,3 +26,11 @@ web/public/meshes/
 
 # 本地运行产生的用户数据（任务/项目等，勿入 git）
 ggRobot-data/
+
+# 2.0 agent deb 构建产物
+agents/x2/packaging/build/
+
+# 2.0 platform
+platform/server/.venv/
+platform/server/data.db
+platform/server/dist/

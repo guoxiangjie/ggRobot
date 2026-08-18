@@ -1,0 +1,58 @@
+#!/bin/bash
+# ggrobot-agent postinst — 幂等（apt install / upgrade / --reinstall 重跑安全）
+set -e
+
+AGENT_DIR=/opt/ggrobot-agent
+VENV=$AGENT_DIR/venv
+CONF=/etc/ggrobot-agent.conf
+
+echo "ggrobot-agent: postinst $*" >&2
+
+# ── 1) venv + Python 依赖（机器人自带 ROS2/AimDK，不打进 deb）──
+if [ ! -d "$VENV" ]; then
+  echo "≫ 创建 venv..." >&2
+  python3 -m venv "$VENV"
+fi
+"$VENV/bin/pip" install -q --upgrade pip
+"$VENV/bin/pip" install -q -r "$AGENT_DIR/requirements.txt"
+
+# ── 2) SN 烧录（仅首次；AGIBOT_SN 整机官方 SN，兜底 Jetson 模组 SN）──
+if [ ! -f "$AGENT_DIR/sn" ]; then
+  SN=$(runuser -u agi -- bash -lc 'echo $AGIBOT_SN' 2>/dev/null | tr -d '[:space:]' || true)
+  if [ -z "$SN" ] || [ "$SN" = '$AGIBOT_SN' ]; then
+    SN="x2-$(tr -d '\0' < /proc/device-tree/serial-number 2>/dev/null)"
+  fi
+  echo "$SN" > "$AGENT_DIR/sn"
+  echo "≫ SN 已烧录: $SN" >&2
+fi
+SN=$(cat "$AGENT_DIR/sn")
+
+# ── 3) /etc/ggrobot-agent.conf（token 永不覆盖；吸收装机向导下发的 /tmp/gg-token）──
+if [ ! -f "$CONF" ]; then
+  if [ -f /tmp/gg-token ]; then
+    TOKEN=$(cat /tmp/gg-token)
+    rm -f /tmp/gg-token
+    echo "≫ 已吸收装机向导下发的 token" >&2
+  else
+    TOKEN=$("$VENV/bin/python" -c "import secrets;print(secrets.token_urlsafe(24))")
+    echo "≫ 已生成随机 token（平台配对时可在平台重置）" >&2
+  fi
+  printf 'token=%s\nsn=%s\nmodel=x2\nport=8300\n' "$TOKEN" "$SN" > "$CONF"
+fi
+chown root:agi "$CONF" && chmod 640 "$CONF"
+
+# ── 4) ROS2 环境自检（失败仅告警不中断，防升级卡死）──
+if ! runuser -u agi -- bash -c \
+  'source /opt/ros/humble/setup.bash && source ~/aimdk/install/local_setup.bash 2>/dev/null && /opt/ggrobot-agent/venv/bin/python -c "import rclpy, aimdk_msgs"' 2>/dev/null; then
+  echo "WARN: rclpy/aimdk_msgs import 自检失败，请检查 ROS2/AimDK 环境（服务仍会尝试启动）" >&2
+else
+  echo "≫ ROS2 环境自检通过" >&2
+fi
+
+# ── 5) systemd（首装/升级同路径）──
+systemctl daemon-reload
+systemctl enable ggrobot-agent
+systemctl restart ggrobot-agent
+
+echo "≫ ggrobot-agent 已启动（:8300，健康检查 curl http://127.0.0.1:8300/api/health）" >&2
+exit 0

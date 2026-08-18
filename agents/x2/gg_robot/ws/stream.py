@@ -1,55 +1,98 @@
-"""WebSocket — 传感器数据推送 + 相机帧 + 键盘遥控"""
+"""WebSocket v2 — wildcard 订阅 + 二进制相机帧 + 键盘遥控（会话锁保护）
+
+协议（契约 §3）：
+  客户端→agent: {"v":1,"type":"sub","topics":["sensor.*","cam.*"]}   # wildcard 仅支持尾 *
+                {"v":1,"type":"unsub","topics":["cam.*"]}
+                {"v":1,"type":"ping"}
+                {"v":1,"type":"velocity","forward":0,"lateral":0,"angular":0}
+  agent→客户端: {"v":1,"type":"event","topic":"sensor.all","data":{...},"ts":...}
+                {"v":1,"type":"pong"} / {"v":1,"type":"session",...} / {"v":1,"type":"error",...}
+  二进制（仅订阅 cam.* 的连接）: 4字节大端ms时间戳 + JPEG
+握手: /ws?token=<设备token>&client_id=<平台实例ID>&name=<名称>（token 必须匹配）
+默认订阅: sys.*
+"""
 
 import asyncio
+import fnmatch
 import json
 import logging
 import struct
 import time
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 已连接的 WebSocket 客户端
-_clients: set[WebSocket] = set()
+
+class Client:
+    """一个 WS 连接 = 一个订阅者"""
+
+    __slots__ = ("ws", "client_id", "name", "topics")
+
+    def __init__(self, ws: WebSocket, client_id: str, name: str):
+        self.ws = ws
+        self.client_id = client_id
+        self.name = name
+        self.topics: set[str] = {"sys.*"}
+
+    def subscribed(self, topic: str) -> bool:
+        return any(fnmatch.fnmatch(topic, pat) for pat in self.topics)
 
 
-async def broadcast_json(data: dict):
-    """向所有客户端推送 JSON"""
-    dead: list[WebSocket] = []
-    text = json.dumps(data, ensure_ascii=False)
-    for ws in list(_clients):  # 遍历副本，避免遍历途中新连接 add 导致 Set changed size during iteration
+_clients: set[Client] = set()
+
+
+async def publish(topic: str, data: dict):
+    """按订阅推送 JSON 事件"""
+    dead: list[Client] = []
+    payload = json.dumps({"v": 1, "type": "event", "topic": topic, "data": data, "ts": time.time()},
+                         ensure_ascii=False)
+    for c in list(_clients):
+        if not c.subscribed(topic):
+            continue
         try:
-            await ws.send_text(text)
+            await c.ws.send_text(payload)
         except Exception:
-            dead.append(ws)
-    for ws in dead:
-        _clients.discard(ws)
+            dead.append(c)
+    for c in dead:
+        _clients.discard(c)
 
 
-async def broadcast_bytes(data: bytes):
-    """向所有客户端推送二进制数据（相机帧）"""
-    dead: list[WebSocket] = []
-    for ws in list(_clients):  # 遍历副本，避免遍历途中新连接 add 导致 Set changed size during iteration
+async def publish_frame(topic: str, frame: bytes):
+    """按订阅推送二进制帧（4B大端ms时间戳 + JPEG）"""
+    dead: list[Client] = []
+    payload = struct.pack(">I", int(time.time() * 1000) & 0xFFFFFFFF) + frame
+    for c in list(_clients):
+        if not c.subscribed(topic):
+            continue
         try:
-            await ws.send_bytes(data)
+            await c.ws.send_bytes(payload)
         except Exception:
-            dead.append(ws)
-    for ws in dead:
-        _clients.discard(ws)
+            dead.append(c)
+    for c in dead:
+        _clients.discard(c)
 
 
 @router.websocket("/ws")
-async def ws_endpoint(ws: WebSocket):
+async def ws_endpoint(ws: WebSocket, token: str = "", client_id: str = "anon", name: str = ""):
+    from ..security import verify_token, controller
+
+    # 握手鉴权：token 必须匹配（未配对/错 token 一律拒绝）
+    if not verify_token(f"Bearer {token}"):
+        await ws.close(code=4001, reason="invalid token")
+        return
+
     await ws.accept()
-    _clients.add(ws)
-    logger.info(f"🔗 WebSocket 客户端连接 (共 {len(_clients)} 个)")
+    client = Client(ws, client_id, name)
+    _clients.add(client)
+    controller.bind_ws(client_id, ws, asyncio.get_running_loop())
+    logger.info(f"🔗 WS 连接 client_id={client_id} (共 {len(_clients)} 个)")
 
     try:
         while True:
             raw = await ws.receive_text()
-
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
@@ -58,9 +101,26 @@ async def ws_endpoint(ws: WebSocket):
             msg_type = msg.get("type")
 
             if msg_type == "ping":
-                await ws.send_text(json.dumps({"type": "pong"}))
+                await ws.send_text(json.dumps({"v": 1, "type": "pong"}))
+
+            elif msg_type == "sub":
+                topics = msg.get("topics") or []
+                if isinstance(topics, list):
+                    client.topics.update(str(t) for t in topics)
+                await ws.send_text(json.dumps({"v": 1, "type": "suback", "topics": sorted(client.topics)}))
+
+            elif msg_type == "unsub":
+                topics = msg.get("topics") or []
+                if isinstance(topics, list):
+                    client.topics.difference_update(str(t) for t in topics)
 
             elif msg_type == "velocity":
+                # 控制类：会话锁校验
+                ok, locked_by = controller.check_or_acquire(client_id, name)
+                if not ok:
+                    await ws.send_text(json.dumps(
+                        {"v": 1, "type": "error", "code": 409, "reason": "locked", "locked_by": locked_by}))
+                    continue
                 from .. import node as node_mod
                 if node_mod._cmd_queue:
                     node_mod._cmd_queue.put("velocity",
@@ -71,14 +131,15 @@ async def ws_endpoint(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
-        _clients.discard(ws)
-        logger.info(f"🔌 WebSocket 客户端断开 (共 {len(_clients)} 个)")
+        _clients.discard(client)
+        controller.release(client_id)
+        logger.info(f"🔌 WS 断开 client_id={client_id} (共 {len(_clients)} 个)")
 
 
 # ── 后台定时推送 ──
 
 async def sensor_pusher(interval: float = 0.2):
-    """每 200ms 推送电池/IMU/关节数据"""
+    """每 200ms 推送电池/IMU/关节复合数据（topic: sensor.all，订阅 sensor.* 命中）"""
     _diag_counter = 0
     while True:
         await asyncio.sleep(interval)
@@ -91,20 +152,17 @@ async def sensor_pusher(interval: float = 0.2):
             continue
 
         try:
-            payload = {
-                "type": "sensor",
-                "ts": time.time(),
+            await publish("sensor.all", {
                 "battery": _node.battery if _node.battery else None,
                 "imu": _node.imu if _node.imu else None,
                 "arms": _node.arm_joints[:14],
-            }
-            await broadcast_json(payload)
+            })
         except Exception as e:
             logger.error(f"传感器推送异常: {e}")
 
         # 周期诊断：每 ~10s 打印 rclpy 传感器回调计数，确认 executor 是否还在调度回调。
-        # 若 b/a/i 计数不再增长 → executor.spin 卡住/退出（怀疑 cmd 线程频繁 create/destroy
-        # timer 触发竞态），而 sensor_pusher 仍在广播旧对象，前端表现为"值不变"。
+        # 若 b/a/i 计数不再增长 → executor.spin 卡住/退出，而 sensor_pusher 仍在广播旧对象，
+        # 前端表现为"值不变"。
         _diag_counter += 1
         if _diag_counter % 50 == 0:
             recv = getattr(_node, "_sensor_recv", {})
@@ -116,7 +174,7 @@ async def sensor_pusher(interval: float = 0.2):
 
 
 async def camera_pusher(interval: float = 0.1):
-    """每 100ms 推送相机 JPEG 帧（二进制）"""
+    """每 100ms 推送活跃相机 JPEG 帧（topic: cam.{camera_id}，订阅 cam.* 命中）"""
     _no_frame_since: float = 0.0  # 首次进入不告警，等首帧出现后再计时
     _warned = False
 
@@ -151,9 +209,22 @@ async def camera_pusher(interval: float = 0.1):
         _no_frame_since = 0.0
         _warned = False
 
-        # 4 字节时间戳(ms) + JPEG 数据
-        ts_bytes = struct.pack(">I", int(time.time() * 1000) & 0xFFFFFFFF)
         try:
-            await broadcast_bytes(ts_bytes + frame)
+            await publish_frame(f"cam.{_node._active_camera or 'default'}", frame)
         except Exception:
             pass
+
+
+async def sys_pusher(interval: float = 10.0):
+    """每 10s 推系统心跳（默认订阅，连接活性保底）"""
+    import datetime
+    while True:
+        await asyncio.sleep(interval)
+        if not _clients:
+            continue
+        from ..security import controller
+        await publish("sys.heartbeat", {
+            "ts": datetime.datetime.now().isoformat(timespec="seconds"),
+            "clients": len(_clients),
+            "controller": controller.current(),
+        })

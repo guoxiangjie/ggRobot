@@ -1,0 +1,9 @@
+Package: ggrobot-agent
+Version: @VERSION@
+Architecture: arm64
+Maintainer: ggRobot <dev@local>
+Depends: python3 (>= 3.10), python3-venv, python3-pip
+Section: utils
+Priority: optional
+Description: GG Robot agent — X2 机器人纯 API 服务 (FastAPI + rclpy, :8300)
+ 由 GG Robot 平台桌面客户端管理；token/SN 配置见 /etc/ggrobot-agent.conf。

@@ -112,6 +112,11 @@ AI_MODEL = _get("ai.model", "gpt-4o-mini")
 # 优先级：env GGROBOT_DATA_DIR > robot.yaml server.data_dir > ~/ggRobot-data
 DATA_DIR = Path(os.environ.get("GGROBOT_DATA_DIR") or _get("server.data_dir", "~/ggRobot-data")).expanduser()
 
+# ── 2.0 agent 配置 ──
+# conf 由 deb postinst 生成（含 token/sn/model），systemd 通过环境变量注入路径
+AGENT_CONF_PATH = Path(os.environ.get("GG_AGENT_CONF", "/etc/ggrobot-agent.conf"))
+AGENT_PORT = int(os.environ.get("GG_AGENT_PORT") or _get("server.port", 8300))
+
 # 旧版用户数据位置（部署目录内，全量部署会被清掉）
 _LEGACY_DATA_ROOT = Path.home() / "ggRobot"
 _LEGACY_ITEMS = ("tasks", "projects", "phone_keys.json", "media")

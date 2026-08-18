@@ -1,85 +1,92 @@
-"""X2 Web Backend — FastAPI 应用 + 静态文件服务"""
+"""X2 agent — FastAPI 应用工厂（纯 API：token 鉴权 + 控制会话锁，无前端资产）"""
 
 import asyncio
 import logging
-from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
-
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """管理 rclpy 线程 + WebSocket 推送任务的生命周期"""
-    # 启动传感器推送后台任务
-    from .ws.stream import sensor_pusher, camera_pusher
-    sensor_task = asyncio.create_task(sensor_pusher())
-    camera_task = asyncio.create_task(camera_pusher())
-    logger.info("📡 传感器推送任务已启动")
+    """管理 WebSocket 推送任务的生命周期"""
+    from .ws.stream import sensor_pusher, camera_pusher, sys_pusher
+    tasks = [
+        asyncio.create_task(sensor_pusher()),
+        asyncio.create_task(camera_pusher()),
+        asyncio.create_task(sys_pusher()),
+    ]
+    logger.info("📡 推送任务已启动（sensor 200ms / camera 100ms / sys 10s）")
 
-    yield  # FastAPI 运行中...
+    yield
 
-    # 清理
-    sensor_task.cancel()
-    camera_task.cancel()
-    logger.info("📡 传感器推送任务已停止")
+    for t in tasks:
+        t.cancel()
+    logger.info("📡 推送任务已停止")
+
+
+# 免 token 端点（发现探测 + 调试文档）
+_OPEN_PATHS = ("/api/health",)
+_OPEN_PREFIXES = ("/docs", "/redoc", "/openapi.json")
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="ggRobot", version="2.0.0", lifespan=lifespan)
+    from . import __version__
+    from .security import verify_bearer, is_paired, controller, client_id_from
 
+    app = FastAPI(title="ggrobot-agent", version=__version__, lifespan=lifespan)
+
+    # CORS 放开（安全由 token 承担，内网定位）：允许平台 renderer 直连
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_methods=["*"],
-        allow_headers=["*"],
+        allow_headers=["Authorization", "X-Client-Id", "X-Client-Name", "Content-Type"],
+        expose_headers=["X-Locked-By"],
     )
+
+    # ── token 鉴权 + 控制会话锁（契约 §2）──
+    @app.middleware("http")
+    async def auth_and_lock(request: Request, call_next):
+        path = request.url.path
+        method = request.method
+
+        if method == "OPTIONS":  # CORS preflight
+            return await call_next(request)
+        if path in _OPEN_PATHS or path.startswith(_OPEN_PREFIXES):
+            return await call_next(request)
+
+        if path.startswith("/api/"):
+            auth = request.headers.get("authorization")
+            if not verify_bearer(auth):
+                # 未配对 503（装机后 conf 就位才有 token）；token 错 401
+                status = 401 if is_paired() else 503
+                return JSONResponse({"detail": "unauthorized", "paired": is_paired()}, status_code=status)
+
+            # 控制类（POST，会话锁范围；takeover 豁免——它本身就是夺锁动作）
+            if method == "POST" and not path.startswith("/api/session/"):
+                client_id = client_id_from(auth, request.headers.get("x-client-id"))
+                client_name = request.headers.get("x-client-name", "")
+                ok, locked_by = controller.check_or_acquire(client_id, client_name)
+                if not ok:
+                    return JSONResponse({"detail": "locked", "locked_by": locked_by}, status_code=409)
+
+        return await call_next(request)
 
     # ── API 路由 ──
     from .routes import register_routes
     register_routes(app)
 
-    # ── WebSocket 路由 ──
+    # ── WebSocket 路由（自带握手鉴权）──
     from .ws.stream import router as ws_router
     app.include_router(ws_router)
 
-    # ── 根路径 ──
     @app.get("/api")
     async def api_root():
-        return {"service": "ggRobot", "version": "2.0.0"}
-
-    # ── SPA 静态文件 + 回退路由 ──
-    # 必须放在所有 API 路由之后，否则会拦截 API 请求
-    if STATIC_DIR.exists() and any(STATIC_DIR.iterdir()):
-        async def _serve_static(full_path: str) -> Response:
-            """统一静态文件服务 + SPA fallback"""
-            file_path = STATIC_DIR / full_path
-            # 文件存在 → 直接返回
-            if file_path.is_file():
-                return FileResponse(file_path)
-            # 否则返回 index.html（SPA fallback）
-            index = STATIC_DIR / "index.html"
-            if index.exists():
-                return FileResponse(index)
-            return Response("{}", status_code=404, media_type="application/json")
-
-        @app.get("/{full_path:path}")
-        async def catch_all(full_path: str):
-            return await _serve_static(full_path)
-
-        @app.head("/{full_path:path}")
-        async def catch_all_head(full_path: str):
-            return await _serve_static(full_path)
-
-        logger.info(f"🌐 静态文件服务: {STATIC_DIR}")
-    else:
-        @app.get("/")
-        async def no_frontend():
-            return {"error": "前端未构建，请先运行 make web"}
+        return {"service": "ggrobot-agent", "version": __version__}
 
     return app

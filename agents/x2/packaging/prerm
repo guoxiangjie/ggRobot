@@ -1,0 +1,7 @@
+#!/bin/bash
+# ggrobot-agent prerm — remove/upgrade 前停服务
+if [ "$1" = "remove" ] || [ "$1" = "upgrade" ]; then
+  systemctl stop ggrobot-agent || true
+fi
+# upgrade 时保留 unit（新包覆盖）；remove 时由 dpkg 随文件清单清理
+exit 0

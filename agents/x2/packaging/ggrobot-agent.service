@@ -1,0 +1,21 @@
+[Unit]
+Description=GG Robot Agent (FastAPI + rclpy, port 8300)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=agi
+Group=agi
+WorkingDirectory=/opt/ggrobot-agent
+ExecStart=/bin/bash /opt/ggrobot-agent/start.sh
+Environment=GG_AGENT_PORT=8300
+Environment=GG_AGENT_CONF=/etc/ggrobot-agent.conf
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ReadWritePaths=/home/agi/ggRobot-data
+
+[Install]
+WantedBy=multi-user.target

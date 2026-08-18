@@ -46,7 +46,7 @@ ggRobot/
 ├── docs/                       ← 知识库（api_reference.md / dev_guide.md / patents）
 ├── Makefile                    ← agent-deb/agent-deploy/contracts/...
 ├── ip.txt                      ← 实机地址（首行 agi@10.10.4.175）
-└── requirements.txt            ← agent 侧 Python 依赖
+└── agents/x2/requirements.txt  ← agent 侧 Python 依赖（deb 打包用）
 ```
 
 ## 核心架构

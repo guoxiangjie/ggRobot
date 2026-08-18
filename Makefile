@@ -24,9 +24,8 @@ contracts:
 	cd contracts && python3 gen.py
 	@echo "✅ 已生成 contracts/ts/catalog.ts + contracts/py/catalog.py"
 
-# ── agent .deb 构建/部署（M2 实现细节）──
+# ── agent .deb 构建/部署 ──
 agent-deb:
-	@echo "（M2 里程碑提供）构建 agents/x2 → dist/ggrobot-agent_*.deb"
 	@bash agents/x2/packaging/build.sh
 
 agent-deploy: agent-deb

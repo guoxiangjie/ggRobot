@@ -110,15 +110,18 @@ def main():
     from .project.store import init_builtin_projects
     init_builtin_projects()
 
-    # 4. 启动 FastAPI
+    # 4. 启动 FastAPI（2.0 agent 默认 :8300，GG_AGENT_PORT 可覆盖）
     from .server import create_app
+    from .config import AGENT_PORT
+    from .security import is_paired, agent_sn
     app = create_app()
 
     import socket
     hostname = socket.gethostname()
-    logger.info(f"🌐 服务地址: http://{hostname}:8000")
-    logger.info("🚀 启动 ggRobot...")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    logger.info(f"🌐 服务地址: http://{hostname}:{AGENT_PORT}")
+    logger.info(f"🔑 配对状态: {'已配对 sn=' + str(agent_sn()) if is_paired() else '未配对（控制端点关闭，仅 /api/health）'}")
+    logger.info("🚀 启动 ggrobot-agent...")
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT, log_level="info")
 
 
 if __name__ == "__main__":
