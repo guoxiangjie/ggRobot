@@ -1,0 +1,72 @@
+/* GG Robot 全局样式 — 自绘标题栏 + 暗色基调（Semi theme-mode=dark 配合） */
+
+:root {
+  --bg: #16181d;
+  --sidebar: #1b1e24;
+  --border: #2a2e37;
+  --accent: #4da6ff;
+  --titlebar-h: 38px;
+  --sidebar-w: 60px;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--semi-color-text-0, #e1e6ed);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── 自绘标题栏（mac 红绿灯区已由 trafficLightPosition 让位）── */
+.titlebar {
+  height: var(--titlebar-h);
+  -webkit-app-region: drag;   /* 整条可拖动窗口 */
+  display: flex;
+  align-items: center;
+  padding-left: 84px;         /* 让位左侧红绿灯 */
+  padding-right: 12px;
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.titlebar .title { font-size: 12px; font-weight: 600; color: #9aa3b2; letter-spacing: 0.02em; }
+
+/* ── 左侧图标栏 ── */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 8px;
+  gap: 4px;
+}
+.nav-item {
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: #8b93a3;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background 0.15s, color 0.15s;
+}
+.nav-item:hover { background: rgba(255,255,255,0.06); color: #d7dce4; }
+.nav-item.active { background: rgba(77,166,255,0.16); color: var(--accent); }
+
+.content { flex: 1; overflow: auto; }
+
+/* ── 通用卡片 ── */
+.page { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
+.page-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; }
+.page-sub { font-size: 12.5px; color: #8b93a3; margin: 0 0 18px; }
+
+.robot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}

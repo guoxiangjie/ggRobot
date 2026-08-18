@@ -1,0 +1,19 @@
+appId: com.ggrobot.platform
+productName: GG Robot
+directories:
+  output: release/${version}
+files:
+  - out/**/*
+  - "!**/*.map"
+extraResources:
+  # PyInstaller onedir 产物（M5 make sidecar-build 生成）
+  - from: resources/sidecar
+    to: sidecar
+asarUnpack:
+  - "**/*.node"
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.developer-tools
+  identity: null   # ad-hoc 签名（未购 Apple Developer）

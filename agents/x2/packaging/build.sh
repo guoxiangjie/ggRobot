@@ -24,6 +24,7 @@ mkdir -p "$PKG/DEBIAN" "$PKG/opt/ggrobot-agent" "$PKG/etc/systemd/system"
 rsync -a \
   --exclude '__pycache__' \
   --exclude '*.pyc' \
+  --exclude '.DS_Store' \
   "$REPO_ROOT/agents/x2/gg_robot/" "$PKG/opt/ggrobot-agent/gg_robot/"
 cp "$REPO_ROOT/agents/x2/requirements.txt" "$PKG/opt/ggrobot-agent/"
 

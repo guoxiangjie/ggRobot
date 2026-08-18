@@ -18,6 +18,38 @@ class PairPrepare(BaseModel):
     name: str = ""
 
 
+class PairRegister(BaseModel):
+    """装机向导直读 SN 后登记（不依赖 agent 已在线）"""
+    sn: str
+    ip: str
+    name: str = ""
+    model: str = "x2"
+
+
+@router.post("/register")
+async def pair_register(req: PairRegister):
+    """装机向导第一步（SSH 读到 SN 后调用）：upsert Robot(pending) → 返回 token 供 postinst 吸收"""
+    token = secrets.token_urlsafe(24)
+    with Session(engine) as s:
+        rb = s.exec(select(Robot).where(Robot.sn == req.sn)).first()
+        if rb:
+            rb.token = token
+            rb.last_ip = req.ip
+            rb.status = "pending"
+            if req.name:
+                rb.name = req.name
+        else:
+            rb = Robot(sn=req.sn, name=req.name or f"{req.model}-{req.sn[-4:]}",
+                       model=req.model, token=token, status="pending", last_ip=req.ip)
+        s.add(rb)
+        s.commit()
+        s.refresh(rb)
+        return {
+            "robot": {"id": rb.id, "sn": rb.sn, "name": rb.name, "model": rb.model},
+            "token": token,
+        }
+
+
 @router.post("/prepare")
 async def pair_prepare(req: PairPrepare):
     """装机向导第一步：探 IP 的 /api/health 拿 SN → upsert Robot(pending) → 返回 token
