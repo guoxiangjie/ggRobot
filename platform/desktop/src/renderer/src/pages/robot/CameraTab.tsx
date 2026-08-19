@@ -79,16 +79,18 @@ export default function CameraTab(): JSX.Element {
         </div>
       }
     >
-      {imgUrl ? (
-        <img src={imgUrl} alt="camera" style={{ maxWidth: '100%', borderRadius: 8, display: 'block' }} />
-      ) : (
-        <div style={{
-          height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.25)', borderRadius: 8, color: '#8b93a3',
-        }}>
-          等待画面…（需先在机器人上切换到该相机）
-        </div>
-      )}
+      <div style={{
+        aspectRatio: '16 / 9', background: '#000', borderRadius: 10, overflow: 'hidden',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
+      }}>
+        {imgUrl ? (
+          <img src={imgUrl} alt="camera" style={{ maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
+        ) : (
+          <span style={{ color: 'var(--semi-color-text-2)', fontSize: 13 }}>
+            等待画面…（需先在机器人上切换到该相机）
+          </span>
+        )}
+      </div>
       <Typography.Text type="tertiary" size="small" style={{ marginTop: 8, display: 'block' }}>
         二进制 JPEG 流（~10fps）· 订阅 cam.* wildcard
       </Typography.Text>

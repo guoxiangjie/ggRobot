@@ -69,8 +69,8 @@ export default function DashboardTab(): JSX.Element {
           {imu ? (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
               {['accel_x', 'accel_y', 'accel_z'].map((k) => (
-                <div key={k} style={{ textAlign: 'center', padding: '8px 0', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 11, color: '#8b93a3' }}>{k.replace('accel_', '加速度 ')}</div>
+                <div key={k} style={{ textAlign: 'center', padding: '8px 0', background: 'var(--semi-color-fill-0)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>{k.replace('accel_', '加速度 ')}</div>
                   <div style={{ fontSize: 16, fontWeight: 600 }}>{(imu[k] ?? 0).toFixed(2)}</div>
                 </div>
               ))}
@@ -93,7 +93,7 @@ export default function DashboardTab(): JSX.Element {
                       marginLeft: `${Math.max(-50, Math.min(50, (a.position / Math.PI) * 50))}%`,
                     }} />
                   </div>
-                  <span style={{ width: 64, textAlign: 'right', color: '#8b93a3' }}>{a.position.toFixed(2)}</span>
+                  <span style={{ width: 64, textAlign: 'right', color: 'var(--semi-color-text-2)' }}>{a.position.toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -107,7 +107,7 @@ export default function DashboardTab(): JSX.Element {
 function Row({ k, v }: { k: string; v: string }): JSX.Element {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13 }}>
-      <span style={{ color: '#8b93a3' }}>{k}</span><span>{v}</span>
+      <span style={{ color: 'var(--semi-color-text-2)' }}>{k}</span><span>{v}</span>
     </div>
   )
 }

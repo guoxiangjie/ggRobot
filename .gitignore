@@ -40,3 +40,4 @@ platform/desktop/node_modules/
 platform/desktop/out/
 platform/desktop/release/
 platform/desktop/resources/sidecar/
+*.tsbuildinfo

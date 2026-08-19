@@ -1,10 +1,13 @@
-/* GG Robot 全局样式 — 自绘标题栏 + 暗色基调（Semi theme-mode=dark 配合） */
+/* GG Robot 全局样式 — 暗色基调（Semi theme-mode=dark 配合）
+   颜色一律走 Semi 变量（--semi-color-*），仅品牌强调色自定义。
+   间距标尺：8 / 12 / 16 / 24；卡片圆角 10；字号：标题 17 / 正文 13 / 辅助 12。 */
 
 :root {
-  --bg: #16181d;
-  --sidebar: #1b1e24;
-  --border: #2a2e37;
-  --accent: #4da6ff;
+  /* 品牌色（唯一自定义色，其余全部 Semi token） */
+  --gg-accent: #4da6ff;
+  --gg-danger: #f44b4b;
+  --gg-success: #3cc98e;
+
   --titlebar-h: 38px;
   --sidebar-w: 60px;
 }
@@ -15,31 +18,58 @@ html, body, #root {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--semi-color-text-0, #e1e6ed);
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  color: var(--semi-color-text-0);
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── 自绘标题栏（mac 红绿灯区已由 trafficLightPosition 让位）── */
+/* ── 自绘标题栏（mac 红绿灯区由 trafficLightPosition 让位）── */
 .titlebar {
   height: var(--titlebar-h);
-  -webkit-app-region: drag;   /* 整条可拖动窗口 */
+  -webkit-app-region: drag;
   display: flex;
   align-items: center;
-  padding-left: 84px;         /* 让位左侧红绿灯 */
+  gap: 8px;
+  padding-left: 84px;
   padding-right: 12px;
-  background: var(--sidebar);
-  border-bottom: 1px solid var(--border);
+  background: var(--semi-color-nav-bg);
+  border-bottom: 1px solid var(--semi-color-border);
   user-select: none;
 }
-.titlebar .title { font-size: 12px; font-weight: 600; color: #9aa3b2; letter-spacing: 0.02em; }
+.titlebar .title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--semi-color-text-2);
+  letter-spacing: 0.08em;
+}
+.titlebar .spacer { flex: 1; }
+
+/* ── 全局急停按钮（标题栏常驻，安全件）── */
+.estop-btn {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--gg-danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.estop-btn:hover { filter: brightness(1.15); }
+.estop-btn:disabled { cursor: default; }
 
 /* ── 左侧图标栏 ── */
 .sidebar {
   width: var(--sidebar-w);
-  background: var(--sidebar);
-  border-right: 1px solid var(--border);
+  background: var(--semi-color-nav-bg);
+  border-right: 1px solid var(--semi-color-border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -47,26 +77,61 @@ html, body, #root {
   gap: 4px;
 }
 .nav-item {
-  width: 42px; height: 42px;
+  width: 42px;
+  height: 42px;
   border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  color: #8b93a3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--semi-color-text-2);
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition: background 0.15s, color 0.15s;
 }
-.nav-item:hover { background: rgba(255,255,255,0.06); color: #d7dce4; }
-.nav-item.active { background: rgba(77,166,255,0.16); color: var(--accent); }
+.nav-item:hover { background: var(--semi-color-fill-0); color: var(--semi-color-text-0); }
+.nav-item.active { background: rgba(77, 166, 255, 0.16); color: var(--gg-accent); }
 
 .content { flex: 1; overflow: auto; }
 
-/* ── 通用卡片 ── */
+/* ── 页面骨架（标尺统一）── */
 .page { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
-.page-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; }
-.page-sub { font-size: 12.5px; color: #8b93a3; margin: 0 0 18px; }
+.page-title { font-size: 17px; font-weight: 700; margin: 0 0 4px; color: var(--semi-color-text-0); }
+.page-sub { font-size: 12px; color: var(--semi-color-text-2); margin: 0 0 20px; }
+
+/* ── 卡片 ── */
+.gg-card { border-radius: 10px; transition: transform 0.15s, box-shadow 0.15s; }
+.gg-card.hoverable:hover { transform: translateY(-2px); box-shadow: var(--semi-shadow-elevated); }
 
 .robot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
+  gap: 16px;
+}
+
+/* ── 在线呼吸灯 ── */
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gg-success);
+  animation: gg-pulse 2s ease-in-out infinite;
+}
+@keyframes gg-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(60, 201, 142, 0.5); }
+  50% { box-shadow: 0 0 0 5px rgba(60, 201, 142, 0); }
+}
+
+/* ── 机器人 tab（详情页）── */
+.robot-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.robot-tabs .nav-item {
+  width: auto;
+  padding: 0 16px;
+  height: 34px;
+  font-size: 13px;
+  text-decoration: none;
+  border-radius: 8px;
 }

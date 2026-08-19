@@ -168,19 +168,49 @@ export default function ControlTab(): JSX.Element {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 14 }}>
-      {/* 左列：动作 + TTS */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <Card title={<span><PersonStanding size={15} style={{ verticalAlign: -2, marginRight: 6 }} />预设动作（{actions.length}）— 需站立模式</span>}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8 }}>
-            {actions.map((a) => (
-              <Button key={a.id} size="small" loading={playingKey === a.id}
-                onClick={() => void playMotion(a)} style={{ borderRadius: 8 }}>
-                {a.name}
-              </Button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* 遥控警示条（motorOn 时置顶常显） */}
+      {motorOn && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+          borderRadius: 10, background: 'rgba(244,75,75,0.14)',
+          border: '1px solid rgba(244,75,75,0.4)', color: 'var(--gg-danger)',
+          fontSize: 13, fontWeight: 600,
+        }}>
+          ⚠ 遥控中 — WASD/QE 或摇杆控制 · 松开自动停止
+          <div style={{ flex: 1 }} />
+          <Button size="small" type="danger" icon={<Square size={12} />} onClick={stopMotor}>停止</Button>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 14 }}>
+        {/* 左列：动作（按部位分组）+ TTS */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Card title={<span><PersonStanding size={15} style={{ verticalAlign: -2, marginRight: 6 }} />预设动作（{actions.length}）— 需站立模式</span>}>
+            {[
+              { label: '手臂', match: (a: MotionAction) => [1, 2, 3].includes(a.area) },
+              { label: '全身', match: (a: MotionAction) => a.area === 11 },
+              { label: '头部', match: (a: MotionAction) => a.area === 4 },
+            ].filter((g) => actions.some(g.match)).map((g) => (
+              <div key={g.label} style={{ marginBottom: 10 }}>
+                <div style={{
+                  fontSize: 12, color: 'var(--semi-color-text-2)', fontWeight: 600,
+                  margin: '6px 0 8px', display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  {g.label}
+                  <div style={{ flex: 1, height: 1, background: 'var(--semi-color-border)' }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8 }}>
+                  {actions.filter(g.match).map((a) => (
+                    <Button key={a.id} size="small" loading={playingKey === a.id}
+                      onClick={() => void playMotion(a)} style={{ borderRadius: 8 }}>
+                      {a.name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
             ))}
-          </div>
-        </Card>
+          </Card>
 
         <Card title={<span><Mic size={15} style={{ verticalAlign: -2, marginRight: 6 }} />语音播报</span>}>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -209,7 +239,7 @@ export default function ControlTab(): JSX.Element {
             ))}
           </div>
           <div ref={joyZone} style={{ height: 170, position: 'relative', borderRadius: 10,
-            background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }} />
+            background: 'var(--semi-color-fill-0)', border: '1px solid var(--border)' }} />
           <Typography.Text type="tertiary" size="small" style={{ marginTop: 6, display: 'block' }}>
             20Hz 连续发送；松开/关闭自动全零；断线自动停
           </Typography.Text>
@@ -225,6 +255,7 @@ export default function ControlTab(): JSX.Element {
             ))}
           </div>
         </Card>
+      </div>
       </div>
     </div>
   )

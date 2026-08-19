@@ -76,15 +76,15 @@ function spawnOnce(port: number): ChildProcess {
  *  单例复用：若已有 ggplatform 在 8310-8330 任一端口活着（其他 App 窗口留下的），
  *  直接复用它 — 多窗口共享同一 sidecar/DB，杜绝多实例多库打架。 */
 export async function startSidecar(onReady: (ok: boolean, port: number) => void): Promise<void> {
-  // 1. 探测已存在的 sidecar（复用）
+  // 1. 探测已存在的同版本 sidecar（复用；旧版本不复用 — 升级后旧进程无新端点）
   for (let p = BASE_PORT; p < BASE_PORT + 20; p++) {
     try {
       const r = await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(500) })
       if (r.ok) {
-        const j = (await r.json()) as { service?: string }
-        if (j.service === 'ggplatform') {
+        const j = (await r.json()) as { service?: string; version?: string }
+        if (j.service === 'ggplatform' && j.version === app.getVersion()) {
           currentPort = p
-          console.log(`[sidecar] 复用已运行实例 :${p}`)
+          console.log(`[sidecar] 复用已运行实例 :${p} (v${j.version})`)
           return onReady(true, p)
         }
       }

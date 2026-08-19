@@ -129,3 +129,27 @@ async def discovery_scan(subnet: str = "10.10.4"):
         raise HTTPException(400, "subnet 形如 10.10.4（三段）")
     found = await scan_subnet(subnet)
     return {"subnet": subnet, "found": found}
+
+
+@router.post("/estop")
+async def emergency_stop():
+    """全局急停：对所有在线机器人并发发零速度（安全件 — token 不出平台）"""
+    import asyncio
+    import httpx
+
+    with Session(engine) as s:
+        robots = s.exec(select(Robot)).all()
+
+    async def zero(ip: str, token: str) -> tuple[str, bool]:
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as c:
+                r = await c.post(f"http://{ip}:8300/api/velocity",
+                                 json={"forward": 0, "lateral": 0, "angular": 0},
+                                 headers={"Authorization": f"Bearer {token}"})
+                return ip, r.status_code == 200
+        except Exception:
+            return ip, False
+
+    results = await asyncio.gather(*(zero(r.last_ip, r.token) for r in robots if r.last_ip))
+    ok = [ip for ip, success in results if success]
+    return {"ok": len(ok) > 0 or len(results) == 0, "stopped": ok, "total": len(results)}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, createContext, useContext } from 'react'
 import { useParams, useNavigate, NavLink, Outlet } from 'react-router-dom'
-import { Card, Tag, Typography, Spin, Empty, Toast } from '@douyinfe/semi-ui'
+import { Card, Tag, Typography, Spin, Empty } from '@douyinfe/semi-ui'
 import { ArrowLeft } from 'lucide-react'
 import { platformApi } from '@/api/platform'
 import { makeAgentClient, type Capabilities } from '@/api/agent'
@@ -89,25 +89,17 @@ export default function RobotLayout(): JSX.Element {
           </Card>
         )}
 
-        <div className="robot-tabs" style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        <div className="robot-tabs">
           {[
             { to: 'dashboard', label: '仪表盘' },
             { to: 'control', label: '控制' },
             { to: 'camera', label: '相机' },
           ].map((t) => (
             <NavLink key={t.to} to={t.to}
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-              style={{ width: 'auto', padding: '0 16px', borderRadius: 8, height: 34, fontSize: 13, textDecoration: 'none' }}>
+              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
               {t.label}
             </NavLink>
           ))}
-          <div style={{ flex: 1 }} />
-          <button className="nav-item" style={{ width: 34, height: 34 }} title="全部停止（零速度）"
-            onClick={() => {
-              void makeAgentClient(ctx.ip, ctx.token).post('/api/velocity', { forward: 0, lateral: 0, angular: 0 })
-                .then(() => Toast.success('已发停止指令'))
-                .catch(() => Toast.error('发送失败'))
-            }} />
         </div>
 
         <Outlet />
