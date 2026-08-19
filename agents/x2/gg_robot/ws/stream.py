@@ -77,10 +77,10 @@ async def publish_frame(topic: str, frame: bytes):
 
 @router.websocket("/ws")
 async def ws_endpoint(ws: WebSocket, token: str = "", client_id: str = "anon", name: str = ""):
-    from ..security import verify_token, controller
+    from ..security import verify_bearer, controller
 
     # 握手鉴权：token 必须匹配（未配对/错 token 一律拒绝）
-    if not verify_token(f"Bearer {token}"):
+    if not verify_bearer(f"Bearer {token}"):
         await ws.close(code=4001, reason="invalid token")
         return
 

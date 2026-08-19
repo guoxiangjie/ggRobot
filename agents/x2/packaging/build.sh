@@ -18,7 +18,7 @@ DEB="$BUILD_DIR/ggrobot-agent_${VER}_arm64.deb"
 echo "🔨 构建 ggrobot-agent $VER (arm64)..."
 
 rm -rf "$BUILD_DIR"
-mkdir -p "$PKG/DEBIAN" "$PKG/opt/ggrobot-agent" "$PKG/etc/systemd/system"
+mkdir -p "$PKG/DEBIAN" "$PKG/opt/ggrobot-agent"
 
 # ── 代码 + 依赖清单（排除缓存/资产按需）──
 rsync -a \
@@ -28,10 +28,6 @@ rsync -a \
   "$REPO_ROOT/agents/x2/gg_robot/" "$PKG/opt/ggrobot-agent/gg_robot/"
 cp "$REPO_ROOT/agents/x2/requirements.txt" "$PKG/opt/ggrobot-agent/"
 
-# ── 启动包装 + systemd unit ──
-cp "$PKG_DIR/start.sh" "$PKG/opt/ggrobot-agent/start.sh"
-chmod 755 "$PKG/opt/ggrobot-agent/start.sh"
-cp "$PKG_DIR/ggrobot-agent.service" "$PKG/etc/systemd/system/"
 
 # ── DEBIAN 控制文件 ──
 sed "s/@VERSION@/$VER/" "$PKG_DIR/control" > "$PKG/DEBIAN/control"

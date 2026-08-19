@@ -1,7 +1,7 @@
 /**添加机器人（装机向导）— 表单 → SSH 推装（一键到底）→ 完成*/
 
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, Button, Input, Typography, Steps, Progress, Toast, Banner } from '@douyinfe/semi-ui'
 import { PackagePlus, ArrowLeft } from 'lucide-react'
 import { useAppStore } from '@/stores/app'
@@ -15,6 +15,7 @@ const STEP_DEFS: { key: string; label: string }[] = [
   { key: 'upload-deb', label: '推送安装包' },
   { key: 'upload-token', label: '下发配对令牌' },
   { key: 'install', label: '安装（apt + systemd）' },
+  { key: 'restart', label: '重启服务' },
   { key: 'health-poll', label: '就绪验证' },
   { key: 'done', label: '完成' },
 ]
@@ -22,8 +23,10 @@ const STEP_DEFS: { key: string; label: string }[] = [
 export default function AddRobot(): JSX.Element {
   const nav = useNavigate()
   const { port } = useAppStore()
+  const [searchParams] = useSearchParams()
 
-  const [host, setHost] = useState('10.10.4.175')
+  // 从扫描弹窗跳转时预填 IP（HashRouter 的 query 需用 useSearchParams 解析）
+  const [host, setHost] = useState(searchParams.get('ip') ?? '10.10.4.175')
   const [username, setUsername] = useState('agi')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -46,14 +49,8 @@ export default function AddRobot(): JSX.Element {
 
   async function start(): Promise<void> {
     if (!password) { Toast.warning('请输入 SSH 密码') ; return }
-    let dp = debPath
-    if (!dp && window.desktop) {
-      Toast.info('请选择本地 .deb 安装包')
-      dp = (await window.desktop.pickDeb()) ?? ''
-      if (!dp) return
-      setDebPath(dp)
-    }
-    if (!dp) { Toast.warning('缺少 deb 安装包路径') ; return }
+    // deb 仅完整装机需要（检测到 agent 已运行时自动走快速配对，无需 deb）
+    const dp = debPath || ''
 
     setRunning(true)
     setDone(null)
@@ -121,17 +118,18 @@ export default function AddRobot(): JSX.Element {
       {(running || done) && (
         <Card>
           <Steps direction="vertical" size="small" style={{ maxHeight: 420, overflow: 'auto' }}>
-            {STEP_DEFS.map((d) => {
+            {STEP_DEFS.filter((d) => steps[d.key]).map((d, i, arr) => {
               const s = steps[d.key]
-              const status = !s ? 'wait'
-                : d.key === 'done'
-                  ? (s.error ? 'error' : 'finish')
-                  : s.error ? 'error' : 'finish'
+              // 只显示已发生的步骤；最后一步进行中（done 除外）
+              const status: 'finish' | 'error' | 'process' =
+                s.error ? 'error'
+                  : i === arr.length - 1 && d.key !== 'done' ? 'process'
+                    : 'finish'
               return (
                 <Steps.Step
                   key={d.key}
                   title={d.label}
-                  status={status as 'wait' | 'finish' | 'error'}
+                  status={status}
                   description={
                     s?.error
                       ? <Typography.Text type="danger" size="small">{s.error}</Typography.Text>

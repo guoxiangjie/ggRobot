@@ -1,58 +1,144 @@
 #!/bin/bash
 # ggrobot-agent postinst — 幂等（apt install / upgrade / --reinstall 重跑安全）
+#
+# 自启动：照官方 SOP《systemctl --user 自启动服务》——
+#   ~/.config/systemd/ggrobot-start.sh（source 官方 bashrc 补 DDS + ROS + aimdk）
+#   ~/.config/systemd/user/ggrobot-agent.service（双 bash 包裹 agirun + 真系统路径）
+# 沙盒的 ~(/home/agi) 与真系统 /agibot/data/home/agi 为同一目录的两个视图。
+
 set -e
 
 AGENT_DIR=/opt/ggrobot-agent
 VENV=$AGENT_DIR/venv
-CONF=/etc/ggrobot-agent.conf
+CONF=/home/agi/.config/ggrobot-agent.conf   # agi 域：SSH 可直写，配对无需重装 deb
 
 echo "ggrobot-agent: postinst $*" >&2
 
-# ── 1) venv + Python 依赖（机器人自带 ROS2/AimDK，不打进 deb）──
-if [ ! -d "$VENV" ]; then
-  echo "≫ 创建 venv..." >&2
-  python3 -m venv "$VENV"
-fi
-"$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q -r "$AGENT_DIR/requirements.txt"
+# ── 1) Python 依赖（系统 python，与 1.0 启动环境完全一致：source ROS2 后 python -m gg_robot）──
+# 1.0 已验证几个月的系统环境：numpy（aimdk_msgs 依赖）/ROS PYTHONPATH 都在系统层。
+# Ubuntu 22.04 pip 无 PEP668 限制，直接装幂等（已装秒过）。
+rm -rf "$VENV"  # 清掉历史 venv 方案
+pip3 install -q -r "$AGENT_DIR/requirements.txt" && echo "≫ Python 依赖就绪" >&2
 
-# ── 2) SN 烧录（仅首次；AGIBOT_SN 整机官方 SN，兜底 Jetson 模组 SN）──
-if [ ! -f "$AGENT_DIR/sn" ]; then
-  SN=$(runuser -u agi -- bash -lc 'echo $AGIBOT_SN' 2>/dev/null | tr -d '[:space:]' || true)
-  if [ -z "$SN" ] || [ "$SN" = '$AGIBOT_SN' ]; then
-    SN="x2-$(tr -d '\0' < /proc/device-tree/serial-number 2>/dev/null)"
-  fi
+# ── 2) SN 烧录（优先吸收向导下发的 /tmp/gg-sn——向导以 agi 会话 bash -ic 读取，最可靠）──
+if [ -f /tmp/gg-sn ]; then
+  SN=$(cat /tmp/gg-sn | tr -d '[:space:]')
+  rm -f /tmp/gg-sn
+else
+  SN=$(runuser -u agi -- bash -ic 'echo $AGIBOT_SN' 2>/dev/null | tail -1 | tr -d '[:space:]' || true)
+fi
+if [ -z "$SN" ] || [ "$SN" = '$AGIBOT_SN' ]; then
+  SN=$(grep -h '^AGIBOT_SN=' /etc/environment 2>/dev/null | head -1 | cut -d= -f2 | tr -d '[:space:]"' || true)
+fi
+if [ -z "$SN" ]; then
+  SN="x2-$(tr -d '\0' < /proc/device-tree/serial-number 2>/dev/null)"
+fi
+# 与已存不同则刷新（SN 读取逻辑升级 / 换件场景自动修正）
+OLD_SN=$(cat "$AGENT_DIR/sn" 2>/dev/null || true)
+if [ "$SN" != "$OLD_SN" ]; then
   echo "$SN" > "$AGENT_DIR/sn"
-  echo "≫ SN 已烧录: $SN" >&2
+  # ⚠️ set -e 坑：[ -f ] && cmd 在条件假时整体非零会中断脚本，必须 || true
+  [ -f "$CONF" ] && sed -i "s/^sn=.*/sn=$SN/" "$CONF" || true
+  echo "≫ SN 已烧录: $SN${OLD_SN:+（原 $OLD_SN 已更新）}" >&2
 fi
 SN=$(cat "$AGENT_DIR/sn")
 
-# ── 3) /etc/ggrobot-agent.conf（token 永不覆盖；吸收装机向导下发的 /tmp/gg-token）──
-if [ ! -f "$CONF" ]; then
-  if [ -f /tmp/gg-token ]; then
-    TOKEN=$(cat /tmp/gg-token)
-    rm -f /tmp/gg-token
-    echo "≫ 已吸收装机向导下发的 token" >&2
-  else
-    TOKEN=$("$VENV/bin/python" -c "import secrets;print(secrets.token_urlsafe(24))")
-    echo "≫ 已生成随机 token（平台配对时可在平台重置）" >&2
-  fi
-  printf 'token=%s\nsn=%s\nmodel=x2\nport=8300\n' "$TOKEN" "$SN" > "$CONF"
+# ── 3) conf（agi 域 ~/​.config/ggrobot-agent.conf：向导下发的 token 总是生效；迁移旧 /etc 版）──
+mkdir -p /home/agi/.config
+if [ ! -f "$CONF" ] && [ -f /etc/ggrobot-agent.conf ]; then
+  cp /etc/ggrobot-agent.conf "$CONF" 2>/dev/null || true   # 迁移旧版（token 身份延续）
+  echo "≫ 已迁移 /etc 配置到 $CONF" >&2
 fi
-chown root:agi "$CONF" && chmod 640 "$CONF"
+if [ -f /tmp/gg-token ]; then
+  TOKEN=$(cat /tmp/gg-token)
+  rm -f /tmp/gg-token
+  if [ -f "$CONF" ]; then
+    # 重装/重配对：更新 token（装机向导是"配对"语义，必须生效），SN 保持已烧录值
+    sed -i "s/^token=.*/token=$TOKEN/" "$CONF"
+    echo "≫ 已更新为装机向导下发的 token" >&2
+  else
+    printf 'token=%s\nsn=%s\nmodel=x2\nport=8300\n' "$TOKEN" "$SN" > "$CONF"
+    echo "≫ 已吸收装机向导下发的 token" >&2
+  fi
+elif [ ! -f "$CONF" ]; then
+  TOKEN=$(python3 -c "import secrets;print(secrets.token_urlsafe(24))")
+  printf 'token=%s\nsn=%s\nmodel=x2\nport=8300\n' "$TOKEN" "$SN" > "$CONF"
+  echo "≫ 已生成随机 token（平台配对时可在平台重置）" >&2
+fi
+chown agi:agi "$CONF" && chmod 600 "$CONF"
+sed -i "s/^sn=.*/sn=$SN/" "$CONF" 2>/dev/null || true   # SN 行统一同步
 
 # ── 4) ROS2 环境自检（失败仅告警不中断，防升级卡死）──
 if ! runuser -u agi -- bash -c \
-  'source /opt/ros/humble/setup.bash && source ~/aimdk/install/local_setup.bash 2>/dev/null && /opt/ggrobot-agent/venv/bin/python -c "import rclpy, aimdk_msgs"' 2>/dev/null; then
+  'source /opt/ros/humble/setup.bash && source ~/aimdk/install/local_setup.bash 2>/dev/null && python3 -c "import rclpy, aimdk_msgs, fastapi"' 2>/dev/null; then
   echo "WARN: rclpy/aimdk_msgs import 自检失败，请检查 ROS2/AimDK 环境（服务仍会尝试启动）" >&2
 else
   echo "≫ ROS2 环境自检通过" >&2
 fi
 
-# ── 5) systemd（首装/升级同路径）──
-systemctl daemon-reload
-systemctl enable ggrobot-agent
-systemctl restart ggrobot-agent
+# ── 5) 停旧进程（升级场景：杀守护脚本与 agent 本体）──
+pkill -f "ggrobot-agent/start.sh" 2>/dev/null || true
+pkill -f "python -m gg_robot" 2>/dev/null || true
+sleep 1
 
-echo "≫ ggrobot-agent 已启动（:8300，健康检查 curl http://127.0.0.1:8300/api/health）" >&2
+# ── 6) 自启动（照官方 SOP 复刻：user systemd + agirun 双 bash 包裹 + cron 兜底）──
+# 沙盒的 ~(/home/agi) 与真系统 /agibot/data/home/agi 是同一目录的两个视图：
+# 脚本写在沙盒侧 ~，unit 里用真系统路径引用。
+SD_DIR=/home/agi/.config/systemd
+mkdir -p "$SD_DIR/user"
+
+# 6a) unit 启动脚本（SOP 姿势：官方 bashrc 补 user systemd 场景缺失的 DDS 配置）
+cat > "$SD_DIR/ggrobot-start.sh" <<'EOF'
+#!/bin/bash
+# GG Robot agent 启动（user systemd + agirun 通道，照官方 SOP）
+# ⚠️ user systemd 场景的 DDS 配置未与机器同步，必须 source 官方 bashrc（SOP 原文）
+source /agibot/data/home/agi/.aima/env/bashrc
+source /opt/ros/humble/setup.bash
+source /agibot/data/home/agi/aimdk/install/local_setup.bash 2>/dev/null \
+  || source /home/agi/aimdk/install/local_setup.bash 2>/dev/null || true
+
+# 单实例锁（防与 cron 保活通道双开抢 8300）
+exec 9>/tmp/ggrobot-agent.lock
+flock -n 9 || { echo "[ggrobot-start.sh] 已有实例在运行，退出" >&2; exit 0; }
+
+cd /opt/ggrobot-agent
+exec python3 -m gg_robot
+EOF
+chmod 755 "$SD_DIR/ggrobot-start.sh"
+
+# 6b) user unit（实测这台机器 agirun 为 ELF 二进制：直接执行，外层套 bash 会报
+#     "cannot execute binary file" 126 — SOP 文档的双 bash 写法与固件版本不符，以实测为准）
+cat > "$SD_DIR/user/ggrobot-agent.service" <<'EOF'
+[Unit]
+Description=GG Robot Agent (FastAPI + rclpy, port 8300)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/agibot/data/home/agi/
+ExecStart=/usr/bin/agirun /bin/bash /agibot/data/home/agi/.config/systemd/ggrobot-start.sh
+StandardOutput=journal+console
+StandardError=journal+console
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+EOF
+chown -R agi:agi "$SD_DIR"
+
+SYSTEMD_OK=0
+if [ -x /usr/bin/agirun ] && runuser -u agi -- bash -c \
+  'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user daemon-reload && systemctl --user enable ggrobot-agent >/dev/null 2>&1; systemctl --user restart ggrobot-agent'; then
+  SYSTEMD_OK=1
+  echo "≫ user systemd + agirun 已启动（SOP 官方姿势）" >&2
+else
+  echo "WARN: user systemd + agirun 启动失败 — 手动排查: bash -ic 'systemctl --user status ggrobot-agent'" >&2
+fi
+
+# 清理历史兜底方案（cron 保活 / 旧 start.sh 守护）
+(runuser -u agi -- bash -c 'crontab -l 2>/dev/null | grep -v ggrobot-agent || true') \
+  | runuser -u agi -- crontab - 2>/dev/null || true
+echo "≫ ggrobot-agent 已启动（:8300，状态: bash -ic 'systemctl --user status ggrobot-agent'）" >&2
+
 exit 0

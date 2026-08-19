@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 
 from .db import engine, utcnow
 from .models import Robot
-from .agent_client import fetch_health
+from .agent_client import fetch_health, fetch_status
 
 SCAN_TIMEOUT = 0.3   # 每 IP TCP 探测超时
 SCAN_CONCURRENCY = 64

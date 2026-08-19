@@ -133,6 +133,16 @@ make deploy/start  # 开发期调试：rsync 源码 + SSH 前台跑（正式分�
 
 **sudoers 铁律**：机器人 agi 免密仅 `/usr/bin/apt`——远程命令只用 `sudo -n apt install`，systemctl/写 /etc 全部收在 deb 的 postinst 内。
 
+## X2 沙盒铁律（实机踩坑结晶，详见 docs/x2-agent-deploy-pitfalls.md）
+
+1. **沙盒双视图**：`/home/agi`（沙盒）与 `/agibot/data/home/agi`（真系统）是同一目录——unit 里用真系统路径，脚本里两者皆可
+2. **自启唯一正解**：user systemd + `ExecStart=/usr/bin/agirun bash 脚本`（agirun 是 ELF 直接执行，**勿套外层 bash**，SOP 文档写法在本机会报 126）；启动脚本必须 source `/agibot/data/home/agi/.aima/env/bashrc`（补 user systemd 缺失的 DDS 配置）
+3. **SN 只能用 `bash -ic 'echo $AGIBOT_SN'` 读**（定义在 .bashrc 交互段）；device-tree 兜底必须 `tr -d '\0'`
+4. **conf 在 `~/.config/ggrobot-agent.conf`（agi 域）**：SSH 直写 + `systemctl --user restart` = 快速配对（免 apt）；agent 只在启动时读一次 conf
+5. **Python 用系统 python3 不用 venv**（numpy/ROS 在系统层）；启动脚本禁 `set -u`（ROS setup.bash 炸）慎 `set -e`（`[ ] && cmd` 假值中断）
+6. **agent 代码改动后三连验证**：pyflakes → curl /api/health → WS 握手（import 名错误 py_compile 抓不到）
+7. **平台 sidecar 单例复用**（8310-8330 探测 healthz），DB 在 userData
+
 ## 关键注意事项
 
 1. **PC1永远不碰** — 10.0.1.40是运控大脑

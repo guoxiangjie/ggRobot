@@ -3,7 +3,7 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'path'
 import { is } from '@electron-toolkit/utils'
-import { negotiatePort, startSidecar, stopSidecar } from './sidecar'
+import { startSidecar, stopSidecar } from './sidecar'
 import { registerIpc } from './ipc'
 
 // 自绘标题栏的 drag 区域（renderer CSS 配合 -webkit-app-region: drag）
@@ -31,9 +31,8 @@ async function createWindow(): Promise<void> {
   })
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
-  // ── sidecar 启动 → 就绪后才加载页面（把协商端口传给 renderer）──
-  const port = await negotiatePort()
-  startSidecar(port, (ok) => {
+  // ── sidecar 启动/复用 → 就绪后才加载页面（端口注入 renderer）──
+  await startSidecar((ok, port) => {
     if (!mainWindow) return
     if (is.dev) {
       const devUrl = process.env['ELECTRON_RENDERER_URL'] as string

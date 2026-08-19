@@ -1,7 +1,18 @@
 #!/bin/bash
-# ggrobot-agent prerm — remove/upgrade 前停服务
+# ggrobot-agent prerm — remove/upgrade 前停服务（SOP 官方通道 + 历史方案清理）
 if [ "$1" = "remove" ] || [ "$1" = "upgrade" ]; then
-  systemctl stop ggrobot-agent || true
+  # 官方通道：user systemd 停止
+  runuser -u agi -- bash -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user stop ggrobot-agent 2>/dev/null; true' || true
+  # 历史方案清理（旧 start.sh 守护进程）
+  pkill -f "ggrobot-agent/start.sh" 2>/dev/null || true
+  pkill -f "python -m gg_robot" 2>/dev/null || true
+  sleep 1
 fi
-# upgrade 时保留 unit（新包覆盖）；remove 时由 dpkg 随文件清单清理
+if [ "$1" = "remove" ]; then
+  # 移除：清 unit/启动脚本/历史 crontab（保留 /etc/ggrobot-agent.conf — token/SN 便于重装恢复身份）
+  runuser -u agi -- bash -c 'export XDG_RUNTIME_DIR=/run/user/$(id -u); systemctl --user disable ggrobot-agent 2>/dev/null; true' || true
+  rm -f /home/agi/.config/systemd/user/ggrobot-agent.service
+  rm -f /home/agi/.config/systemd/ggrobot-start.sh
+  (runuser -u agi -- bash -c 'crontab -l 2>/dev/null | grep -v ggrobot-agent || true') | runuser -u agi -- crontab - 2>/dev/null || true
+fi
 exit 0

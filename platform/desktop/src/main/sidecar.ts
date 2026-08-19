@@ -54,7 +54,13 @@ function spawnOnce(port: number): ChildProcess {
   }
   const p = spawn(file, args, {
     cwd,
-    env: { ...process.env, GG_PLATFORM_PORT: String(port), PYTHONUNBUFFERED: '1' },
+    env: {
+      ...process.env,
+      GG_PLATFORM_PORT: String(port),
+      PYTHONUNBUFFERED: '1',
+      // 数据库放 userData（.app 包内可能只读且重装即丢）
+      GG_PLATFORM_DB: path.join(app.getPath('userData'), 'data.db'),
+    },
   })
   const fd = logFile()
   p.on('error', (e) => {
@@ -66,8 +72,31 @@ function spawnOnce(port: number): ChildProcess {
   return p
 }
 
-/** 启动 sidecar，就绪（/healthz 200）后回调 */
-export function startSidecar(port: number, onReady: (ok: boolean) => void): void {
+/** 启动 sidecar，就绪（/healthz 200）后回调。
+ *  单例复用：若已有 ggplatform 在 8310-8330 任一端口活着（其他 App 窗口留下的），
+ *  直接复用它 — 多窗口共享同一 sidecar/DB，杜绝多实例多库打架。 */
+export async function startSidecar(onReady: (ok: boolean, port: number) => void): Promise<void> {
+  // 1. 探测已存在的 sidecar（复用）
+  for (let p = BASE_PORT; p < BASE_PORT + 20; p++) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${p}/healthz`, { signal: AbortSignal.timeout(500) })
+      if (r.ok) {
+        const j = (await r.json()) as { service?: string }
+        if (j.service === 'ggplatform') {
+          currentPort = p
+          console.log(`[sidecar] 复用已运行实例 :${p}`)
+          return onReady(true, p)
+        }
+      }
+    } catch { /* 端口无实例，继续 */ }
+  }
+
+  // 2. 无实例 → 协商端口 + 拉起
+  const port = await negotiatePort()
+  bootAndPoll(port, onReady)
+}
+
+function bootAndPoll(port: number, onReady: (ok: boolean, port: number) => void): void {
   currentPort = port
 
   const boot = (): boolean => {
@@ -87,10 +116,10 @@ export function startSidecar(port: number, onReady: (ok: boolean) => void): void
   // 就绪探测（--onedir 首启也要解压，给足 15s）
   const deadline = Date.now() + 15_000
   const poll = async (): Promise<void> => {
-    if (Date.now() > deadline) return onReady(false)
+    if (Date.now() > deadline) return onReady(false, port)
     try {
       const r = await fetch(`http://127.0.0.1:${port}/healthz`, { signal: AbortSignal.timeout(800) })
-      if (r.ok) return onReady(true)
+      if (r.ok) return onReady(true, port)
     } catch {
       /* 未就绪继续等 */
     }
@@ -100,10 +129,10 @@ export function startSidecar(port: number, onReady: (ok: boolean) => void): void
   void poll()
 }
 
+/** 退出处理：不杀 sidecar（其他窗口可能共用，下个 App 秒连复用） */
 export function stopSidecar(): void {
   quitting = true
-  child?.kill('SIGTERM')
-  setTimeout(() => child?.kill('SIGKILL'), 3000)
+  child?.removeAllListeners('exit')
 }
 
 export function platformPort(): number {
