@@ -17,7 +17,7 @@
     "ssh2": "^1.16.0"
   },
   "devDependencies": {
-    "@douyinfe/semi-ui": "^2.62.0",
+    "@douyinfe/semi-ui": "^2.102.0",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@electron-toolkit/utils": "^3.0.0",
