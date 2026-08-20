@@ -16,7 +16,20 @@
 ORIN_HOST := $(shell grep -v '^\#' ip.txt 2>/dev/null | head -1)
 ORIN_DIR  ?= ~/ggRobot
 
-.PHONY: contracts agent-deb agent-deploy agent-stop agent-status deploy start stop sidecar-build desktop-package
+.PHONY: contracts agent-deb agent-deploy agent-stop agent-status deploy start stop sidecar-build desktop-package test test-agent test-e2e
+
+# ── 多机编排回归测试 ──
+# test-agent: agent choreo 执行器单测（无 rclpy 依赖，Mac python3.12）
+# test-e2e:   platform 编排端到端（假 agent×2，需 platform/server/.venv）
+test-agent:
+	@echo "🧪 agent choreo 单测..."
+	/opt/homebrew/bin/python3.12 agents/x2/tests/test_choreo.py
+
+test-e2e:
+	@echo "🧪 platform 编排 e2e（端口 8300/8301/8320 需空闲）..."
+	platform/server/.venv/bin/python platform/server/tests/test_choreo_e2e.py
+
+test: test-agent test-e2e
 
 # ── 平台 sidecar 打包（PyInstaller onedir → desktop/resources/sidecar/）──
 sidecar-build:

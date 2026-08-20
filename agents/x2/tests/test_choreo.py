@@ -4,11 +4,14 @@
       （本机系统 python3 是 3.9，项目用 3.10+ 语法，须用 3.10+）
 
 覆盖：at 调度/顺序执行、失败跳过继续、stop+零速收尾、未 load 防护、
-at 排序、8 种步骤类型执行。注入假 node 模块绕过 rclpy import。
+at 排序、8 种步骤类型执行、WS 事件上报投递（run_coroutine_threadsafe）。
+注入假 node / ws.stream 模块绕过 rclpy / FastAPI import。
 """
 
+import asyncio
 import os
 import sys
+import threading
 import time
 import types
 
@@ -38,6 +41,18 @@ fake_node_mod = types.ModuleType("gg_robot.node")
 fake_node_mod._node = fake
 fake_node_mod._cmd_queue = None
 sys.modules["gg_robot.node"] = fake_node_mod
+
+# ── 注入假 ws.stream（验证 WS 事件上报投递）──
+_reported: list[tuple[str, dict]] = []
+
+
+async def _fake_publish(topic: str, data: dict):
+    _reported.append((topic, data))
+
+
+ws_mod = types.ModuleType("gg_robot.ws.stream")
+ws_mod.publish = _fake_publish
+sys.modules["gg_robot.ws.stream"] = ws_mod
 
 import gg_robot.choreo as ch
 
@@ -140,5 +155,26 @@ s = run_join("t8")
 check("t8 全类型 finished 无失败", s["state"] == "finished" and s["failed"] == [])
 check("t8 各类型均被调用", all(any(c[0] == k for c in fake.calls)
       for k in ('motion', 'emoji', 'vel', 'mode', 'volume', 'linkcraft')))
+
+# ── 用例9：WS 事件上报投递（run_coroutine_threadsafe 到注入的 loop）──
+loop = asyncio.new_event_loop()
+loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+loop_thread.start()
+_reported.clear()
+ch.runner.load("t9", [
+    {"type": "wait", "duration": 0.03, "at": 0.0},
+    {"type": "wait", "duration": 0.03, "at": 0.1},
+])
+ch.runner.start("t9", time.time() + 0.02, loop)
+ch.runner._runs["t9"].thread.join(timeout=5)
+time.sleep(0.15)  # 等线程安全投递在 loop 线程执行
+loop.call_soon_threadsafe(loop.stop)
+loop_thread.join(timeout=2)
+loop.close()
+
+check("t9 上报 choreo.step started/done", len(_reported) >= 4 and _reported[0][1]["status"] == "started")
+check("t9 上报 choreo.state finished", any(t == "choreo.state" and d["state"] == "finished" for t, d in _reported))
+check("t9 上报均带 run_id", all(d.get("run_id") == "t9" for _, d in _reported))
+check("t9 step 上报顺序 started→done", [d["status"] for t, d in _reported if t == "choreo.step"] == ["started", "done", "started", "done"])
 
 print(f"\n🎉 全部 {PASS} 项断言通过")
