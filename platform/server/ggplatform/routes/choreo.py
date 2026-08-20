@@ -169,6 +169,12 @@ async def choreo_run_status(run_id: str):
     return runner.status(run_id)
 
 
+@router.get("/choreo/runs")
+async def choreo_runs_history():
+    """最近执行历史（终态，倒序，内存保留最近 20 次）"""
+    return {"runs": runner.history()}
+
+
 @router.get("/choreo/types")
 async def choreo_types(robot_id: str = ""):
     """编排步骤类型清单：优先指定机器人，缺省取第一台已登记且有 IP 的机器人

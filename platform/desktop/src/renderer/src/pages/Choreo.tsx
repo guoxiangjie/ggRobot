@@ -323,6 +323,7 @@ function TypePicker({ types, onPick, onClose }: {
 // ── 主页面 ──
 export default function ChoreoPage(): JSX.Element {
   const [choreos, setChoreos] = useState<Choreo[]>([])
+  const [history, setHistory] = useState<ChoreoRun[]>([])
   const [loading, setLoading] = useState(false)
   const [editor, setEditor] = useState<{ open: boolean; choreo: Choreo | null }>({ open: false, choreo: null })
   const [running, setRunning] = useState<ChoreoRun | null>(null)
@@ -331,6 +332,7 @@ export default function ChoreoPage(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true)
     try { setChoreos(await api.listChoreos()) } catch { toast.error('平台服务不可达') }
+    try { setHistory(await api.choreoRuns()) } catch { /* 历史非关键 */ }
     setLoading(false)
   }, [])
 
@@ -357,6 +359,7 @@ export default function ChoreoPage(): JSX.Element {
           setRunning(st)
           if (['finished', 'stopped', 'failed'].includes(st.state)) {
             if (pollTimer.current) clearInterval(pollTimer.current)
+            void load()  // 刷新最近执行
             const fails = st.robots.filter((rb) => rb.failed?.length || rb.state === 'failed')
             if (st.state === 'finished' && !fails.length) toast.success(`编排「${name}」完成`)
             else toast.warning(`编排「${name}」结束：${st.robots.map((rb) => `${rb.name}:${rb.state}${rb.failed?.length ? `(失败${rb.failed.length})` : ''}`).join('，')}`)
@@ -436,6 +439,32 @@ export default function ChoreoPage(): JSX.Element {
       {editor.open && (
         <ChoreoEditor initial={editor.choreo} onClose={() => setEditor({ open: false, choreo: null })}
           onSaved={() => void load()} />
+      )}
+
+      {/* 最近执行 */}
+      {history.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div className="page-sub" style={{ marginBottom: 10 }}>最近执行（{history.length} 次）</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {history.map((r) => (
+              <div key={r.run_id} className="choreo-run-bar" style={{ marginTop: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', flexWrap: 'wrap' }}>
+                  <Tag color={r.state === 'finished' ? 'green' : r.state === 'stopped' ? 'orange' : 'red'}>{r.state}</Tag>
+                  <b>{r.name}</b>
+                  <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>{r.ended_at?.replace('T', ' ').slice(5, 19)}</span>
+                  <div style={{ flex: 1 }} />
+                  {r.robots.map((rb) => (
+                    <span key={rb.robot_id} style={{ fontSize: 12 }}>
+                      {rb.name}: <Tag size="small" color={rb.state === 'finished' ? 'blue' : 'red'}>
+                        {rb.state}{rb.failed?.length ? `(失败${rb.failed.length})` : ''}
+                      </Tag>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

@@ -156,6 +156,10 @@ export const api = {
     const { data } = await platformApi().get(`/api/choreo/types`, { timeout: 3000 })
     return data.types
   },
+  choreoRuns: async (): Promise<ChoreoRun[]> => {
+    const { data } = await platformApi().get(`/api/choreo/runs`)
+    return data.runs
+  },
 }
 
 /**hub WS — 多机状态聚合订阅（robots + 编排运行） */

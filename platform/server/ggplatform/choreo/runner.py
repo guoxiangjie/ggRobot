@@ -16,6 +16,7 @@ import asyncio
 import logging
 import time
 import uuid
+from collections import deque
 from datetime import datetime, timezone
 
 from ..agent_client import (
@@ -73,6 +74,8 @@ class ChoreoRunner:
         self._lock = asyncio.Lock()
         self._runs: dict[str, ChoreoRun] = {}
         self._active_run_id: str | None = None
+        # 最近执行历史（终态 run，内存保留，供"最近执行"回看）
+        self._history: deque[dict] = deque(maxlen=20)
 
     # ── 控制面 ──
 
@@ -150,6 +153,17 @@ class ChoreoRunner:
         return [r.to_dict() for r in self._runs.values()
                 if r.state not in ("finished", "stopped", "failed")]
 
+    def history(self) -> list[dict]:
+        """最近执行历史（终态，倒序）"""
+        return list(self._history)
+
+    def _record_history(self, run: ChoreoRun) -> None:
+        """run 终态时记入历史（清理 _steps 内部字段）"""
+        d = run.to_dict()
+        for rb in d["robots"]:
+            rb.pop("_steps", None)
+        self._history.appendleft(d)
+
     # ── 执行流程（后台 task）──
 
     async def _execute(self, run: ChoreoRun) -> None:
@@ -163,6 +177,7 @@ class ChoreoRunner:
                 run.state = "failed"
                 run.ended_at = self._now()
                 self._clear_active(run.run_id)
+                self._record_history(run)
                 return
 
             # 2. 广播开始（绝对墙钟时刻）
@@ -193,11 +208,13 @@ class ChoreoRunner:
                 f"🎬 编排结束 run={run.run_id} 机器 "
                 + ", ".join(f"{rb['name']}:{rb['state']}(fail {len(rb['failed'])})" for rb in run.robots))
             self._clear_active(run.run_id)
+            self._record_history(run)
         except Exception as e:
             logger.exception(f"🎬 编排执行异常 run={run.run_id}")
             run.state = "failed"
             run.ended_at = self._now()
             self._clear_active(run.run_id)
+            self._record_history(run)
 
     async def _load_one(self, run: ChoreoRun, rb: dict) -> bool:
         """分发单机轨道；失败 → 标记该机 failed（跳过继续）"""

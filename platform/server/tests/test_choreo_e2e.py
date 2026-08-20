@@ -250,6 +250,14 @@ def main():
     stl = c.get(f"/api/choreo/run/{rrl['run_id']}/status").json()
     check("长跑 run 已停止", stl.get("state") in ("stopped", "finished"))
 
+    # 8. 执行历史（终态 run 回看）
+    hist = c.get("/api/choreo/runs").json().get("runs") or []
+    check("执行历史含已结束 runs", len(hist) >= 3)
+    check("历史按时间倒序", all(hist[i].get("ended_at", "") >= hist[i + 1].get("ended_at", "")
+                                for i in range(len(hist) - 1)))
+    check("历史不含 _steps 内部字段", all(
+        "_steps" not in rb for r in hist for rb in r.get("robots", [])))
+
     print(f"\n🎉 M2 端到端：全部 {PASS} 项断言通过")
 
 
