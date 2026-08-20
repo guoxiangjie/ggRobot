@@ -16,12 +16,13 @@ import { toast } from '@/api/toast'
 import { api, hubWs, type Choreo, type ChoreoTrack, type ChoreoStep, type ChoreoRun } from '@/api/platform'
 import { useRobotsStore } from '@/stores/robots'
 
-// ── 步骤类型元数据（前端表单，参数与 agent choreo 执行器对齐）──
+// ── 步骤类型元数据（本地 fallback；打开编辑器时从 agent 上报覆盖，见 ChoreoEditor）──
 type FieldDef = {
   name: string; label: string; kind: 'text' | 'number' | 'select' | 'switch'
   required?: boolean; default?: unknown; options?: { label: string; value: string | number }[]
 }
-const STEP_META: Record<string, { label: string; icon: string; color: string; fields: FieldDef[] }> = {
+type StepTypeMeta = { label: string; icon: string; color: string; fields: FieldDef[] }
+const STEP_META: Record<string, StepTypeMeta> = {
   tts: { label: '语音', icon: '🗣️', color: '#4CAF50', fields: [
     { name: 'text', label: '播报文字', kind: 'text', required: true },
     { name: 'wait_done', label: '等播完', kind: 'switch', default: true },
@@ -66,9 +67,6 @@ const STEP_META: Record<string, { label: string; icon: string; color: string; fi
 }
 const STEP_ORDER = ['tts', 'motion', 'emoji', 'velocity', 'wait', 'mode', 'volume', 'media', 'linkcraft']
 
-function stepMeta(type: string): { label: string; icon: string; color: string } {
-  return STEP_META[type] || { label: type, icon: '🔸', color: '#666' }
-}
 function stepSummary(s: ChoreoStep): string {
   switch (s.type) {
     case 'tts': return String(s.text || '').slice(0, 18)
@@ -86,10 +84,10 @@ function stepSummary(s: ChoreoStep): string {
 
 // ── 步骤编辑弹窗 ──
 interface StepEditState { trackIdx: number; stepIdx: number | null; type: string; form: Record<string, unknown>; at: number }
-function StepModal({ state, onClose, onSave }: {
-  state: StepEditState; onClose: () => void; onSave: (s: StepEditState) => void
+function StepModal({ state, types, onClose, onSave }: {
+  state: StepEditState; types: Record<string, StepTypeMeta>; onClose: () => void; onSave: (s: StepEditState) => void
 }): JSX.Element {
-  const meta = STEP_META[state.type] || { label: state.type, fields: [] as FieldDef[] }
+  const meta = types[state.type] || { label: state.type, icon: '🔸', color: '#666', fields: [] as FieldDef[] }
   const [form, setForm] = useState<Record<string, unknown>>(state.form)
   const [at, setAt] = useState(state.at)
 
@@ -163,6 +161,19 @@ function ChoreoEditor({ initial, onClose, onSaved }: {
   const [saving, setSaving] = useState(false)
   const [stepEdit, setStepEdit] = useState<StepEditState | null>(null)
   const [typePick, setTypePick] = useState<{ trackIdx: number; baseAt: number } | null>(null)
+  // 步骤类型清单：本地 STEP_META 兜底，打开时从 agent 上报覆盖（多型号可裁剪）
+  const [types, setTypes] = useState<Record<string, StepTypeMeta>>(STEP_META)
+
+  useEffect(() => {
+    api.getChoreoTypes().then((list) => {
+      if (!list?.length) return
+      const fromAgent: Record<string, StepTypeMeta> = {}
+      for (const t of list) {
+        fromAgent[t.type] = { label: t.label, icon: t.icon, color: t.color, fields: t.fields }
+      }
+      setTypes((prev) => ({ ...prev, ...fromAgent }))
+    }).catch(() => { /* agent 离线等场景用本地 fallback */ })
+  }, [])
 
   const robotOptions = robots.filter((r) => r.status === 'active')
     .map((r) => ({ label: `${r.name}（${r.sn.slice(-4)}）`, value: r.id }))
@@ -254,7 +265,7 @@ function ChoreoEditor({ initial, onClose, onSaved }: {
             <div className="choreo-steps">
               {!t.steps.length && <Typography.Text type="tertiary" size="small">空轨道</Typography.Text>}
               {t.steps.map((s, si) => {
-                const m = stepMeta(s.type)
+                const m = types[s.type] || { label: s.type, icon: '🔸', color: '#666' }
                 return (
                   <div key={si} className="choreo-step" style={{ borderColor: m.color }}
                     onClick={() => setStepEdit({ trackIdx: ti, stepIdx: si, type: s.type, form: { ...s }, at: Number(s.at) || 0 })}>
@@ -273,12 +284,13 @@ function ChoreoEditor({ initial, onClose, onSaved }: {
       </Space>
 
       {stepEdit && (
-        <StepModal state={stepEdit}
+        <StepModal state={stepEdit} types={types}
           onClose={() => setStepEdit(null)}
           onSave={(s) => { if (!s.form.text && s.type === 'tts') { toast.warning('语音内容必填'); return } saveStep(s) }} />
       )}
       {typePick && (
-        <TypePicker onPick={(t) => { setStepEdit({ trackIdx: typePick.trackIdx, stepIdx: null, type: t, form: {}, at: typePick.baseAt }); setTypePick(null) }}
+        <TypePicker types={types}
+          onPick={(t) => { setStepEdit({ trackIdx: typePick.trackIdx, stepIdx: null, type: t, form: {}, at: typePick.baseAt }); setTypePick(null) }}
           onClose={() => setTypePick(null)} />
       )}
     </Modal>
@@ -286,12 +298,16 @@ function ChoreoEditor({ initial, onClose, onSaved }: {
 }
 
 // ── 编排类型选择（新步骤）──
-function TypePicker({ onPick, onClose }: { onPick: (t: string) => void; onClose: () => void }): JSX.Element {
+function TypePicker({ types, onPick, onClose }: {
+  types: Record<string, StepTypeMeta>; onPick: (t: string) => void; onClose: () => void
+}): JSX.Element {
+  // 顺序：STEP_ORDER 内优先（保持稳定排序），agent 新增类型追加尾部
+  const order = [...STEP_ORDER.filter((t) => types[t]), ...Object.keys(types).filter((t) => !STEP_ORDER.includes(t))]
   return (
     <Modal title="选择步骤类型" visible onCancel={onClose} footer={null} style={{ width: 480 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-        {STEP_ORDER.map((t) => {
-          const m = stepMeta(t)
+        {order.map((t) => {
+          const m = types[t]
           return (
             <div key={t} className="choreo-type-pick" onClick={() => onPick(t)}>
               <div style={{ fontSize: 20 }}>{m.icon}</div>

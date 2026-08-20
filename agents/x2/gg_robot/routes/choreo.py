@@ -50,6 +50,13 @@ async def choreo_stop(req: ChoreoStopRequest):
     return runner.stop(req.run_id)
 
 
+@router.get("/api/choreo/types")
+async def choreo_types():
+    """步骤类型清单（前端表单动态组装，多型号可裁剪）"""
+    from ..choreo import CHOREO_STEP_TYPES
+    return {"types": CHOREO_STEP_TYPES}
+
+
 @router.get("/api/choreo/status")
 async def choreo_status(run_id: str):
     from ..choreo import runner

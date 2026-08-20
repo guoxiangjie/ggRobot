@@ -177,4 +177,21 @@ check("t9 上报 choreo.state finished", any(t == "choreo.state" and d["state"] 
 check("t9 上报均带 run_id", all(d.get("run_id") == "t9" for _, d in _reported))
 check("t9 step 上报顺序 started→done", [d["status"] for t, d in _reported if t == "choreo.step"] == ["started", "done", "started", "done"])
 
+# ── 用例10：CHOREO_STEP_TYPES 清单（前端表单动态组装的数据源）──
+_EXPECTED_TYPES = {'tts', 'motion', 'emoji', 'velocity', 'wait', 'mode', 'volume', 'media', 'linkcraft'}
+types = ch.CHOREO_STEP_TYPES
+by_type = {t["type"]: t for t in types}
+check("t10 类型清单与执行器对齐", set(by_type) == _EXPECTED_TYPES)
+check("t10 每类有 label/icon/color/fields", all(
+    t.get("label") and t.get("icon") and t.get("color") and isinstance(t.get("fields"), list)
+    for t in types))
+check("t10 字段结构合法", all(
+    all(f.get("name") and f.get("label") and f.get("kind") in ("text", "number", "select", "switch")
+        for f in t["fields"])
+    for t in types))
+check("t10 select 字段带 options", all(
+    all(f["kind"] != "select" or (f.get("options") and len(f["options"]) > 0)
+        for f in t["fields"])
+    for t in types))
+
 print(f"\n🎉 全部 {PASS} 项断言通过")

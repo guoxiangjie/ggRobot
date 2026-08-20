@@ -1,6 +1,6 @@
 # 多机共同编排模块设计 v1（ggRobot 2.0）
 
-> 状态：设计稿（待评审后分阶段实施）
+> 状态：**已实施 M1–M3**（agent 执行器 / platform 编排器 / React 编排页），回归测试 42 项断言全绿（`make test`）；M4 实机验证待机器人上线
 > 分支：2.0
 
 ## 1. 背景与目标
@@ -64,6 +64,9 @@
 | `/api/choreo/start` | POST | 广播开始：`{run_id, start_ts}`（Unix 秒，浮点，**绝对墙钟时刻**） |
 | `/api/choreo/stop` | POST | 停止：`{run_id}`，中止执行线程 |
 | `/api/choreo/status` | GET | 主动查询：`{run_id}` → `{state, current, total, failed:[]}` |
+| `/api/choreo/types` | GET | 步骤类型清单（前端表单动态组装；多型号 agent 可裁剪 —— 能力契约哲学） |
+
+platform 透传端点：`GET /api/choreo/types?robot_id=`（缺省取第一台已登记有 IP 的机器人，不要求 active）—— 前端编辑器打开时拉取并覆盖本地 fallback。
 
 WS 事件（agent → 平台/桌面端，topic `choreo.*`，沿用 WS v2 订阅制）：
 

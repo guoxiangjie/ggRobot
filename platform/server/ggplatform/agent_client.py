@@ -105,3 +105,16 @@ async def choreo_status(ip: str, token: str, run_id: str, port: int = AGENT_PORT
     except Exception:
         pass
     return None
+
+
+async def fetch_choreo_types(ip: str, token: str, port: int = AGENT_PORT) -> dict | None:
+    """拉取 agent 编排步骤类型清单（前端表单动态组装）"""
+    try:
+        async with httpx.AsyncClient(timeout=_CHOREO_TIMEOUT) as c:
+            r = await c.get(f"http://{ip}:{port}/api/choreo/types",
+                            headers={"Authorization": f"Bearer {token}"})
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return None

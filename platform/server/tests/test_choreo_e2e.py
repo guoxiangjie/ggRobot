@@ -105,6 +105,15 @@ class FakeAgent:
                 self.runs[rid]["state"] = "stopped"
             return {"ok": True, "run_id": rid}
 
+        @a.get("/api/choreo/types")
+        def types():
+            return {"types": [
+                {"type": "tts", "label": "语音", "icon": "🗣️", "color": "#4CAF50",
+                 "fields": [{"name": "text", "label": "播报文字", "kind": "text", "required": True}]},
+                {"type": "motion", "label": "预设动作", "icon": "🕺", "color": "#FF9800",
+                 "fields": [{"name": "motion_id", "label": "动作 ID", "kind": "number", "required": True}]},
+            ]}
+
         @a.get("/api/choreo/status")
         def status(run_id: str):
             r = self.runs.get(run_id)
@@ -185,8 +194,11 @@ def main():
     check("编排统计", rc["robot_count"] == 2 and rc["step_count"] == 4)
     choreo_id = rc["id"]
 
-    # 3. 校验：缺 robot_id 的轨道被拒
+    # 3. 校验：缺 robot_id 的轨道被拒；步骤类型清单透传
     check("非法轨道 400", c.post("/api/choreos", json={"name": "bad", "tracks": [{"steps": []}]}).status_code == 400)
+    rt = c.get("/api/choreo/types").json()
+    check("choreo/types 透传 agent 上报",
+          len(rt.get("types") or []) == 2 and rt.get("robot_id") in (id_a, id_b))
 
     # 4. 执行
     rr = c.post(f"/api/choreos/{choreo_id}/run").json()

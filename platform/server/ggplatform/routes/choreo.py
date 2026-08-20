@@ -22,6 +22,7 @@ from sqlmodel import Session, select
 from ..db import engine
 from ..models import Robot, Choreography
 from ..choreo.runner import runner
+from ..agent_client import fetch_choreo_types
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -166,3 +167,21 @@ async def stop_choreo_run(run_id: str):
 @router.get("/choreo/run/{run_id}/status")
 async def choreo_run_status(run_id: str):
     return runner.status(run_id)
+
+
+@router.get("/choreo/types")
+async def choreo_types(robot_id: str = ""):
+    """编排步骤类型清单：优先指定机器人，缺省取第一台已登记且有 IP 的机器人
+    （表单数据源，不要求 active——pending 也允许预览；前端表单动态组装）"""
+    with Session(engine) as s:
+        if robot_id:
+            rb = s.get(Robot, robot_id)
+        else:
+            rb = s.exec(select(Robot).where(Robot.last_ip != "")).first()
+        if rb is None or not rb.last_ip:
+            raise HTTPException(404, "无可用机器人（请先在设备页配对激活）")
+        rid, rname, rip, rport, rtoken = rb.id, rb.name or rb.sn, rb.last_ip, rb.port or 8300, rb.token or ""
+    st = await fetch_choreo_types(rip, rtoken, rport)
+    if st is None:
+        raise HTTPException(502, f"{rname} agent 无响应")
+    return {"robot_id": rid, "robot_name": rname, "types": st.get("types", [])}

@@ -281,5 +281,87 @@ def _exec_step(node, step: dict) -> None:
         raise ValueError(f"未知步骤类型: {t}")
 
 
+# ── 步骤类型清单（GET /api/choreo/types 上报，前端表单动态组装）──
+# 与 _exec_step 支持的类型一一对应；字段结构供前端渲染参数表单。
+# 多型号 agent 可裁剪/扩展本清单 —— UI 无需发版即可适配（能力契约哲学）。
+
+CHOREO_STEP_TYPES: list[dict] = [
+    {
+        "type": "tts", "label": "语音", "icon": "🗣️", "color": "#4CAF50",
+        "fields": [
+            {"name": "text", "label": "播报文字", "kind": "text", "required": True},
+            {"name": "wait_done", "label": "等播完", "kind": "switch", "default": True},
+        ],
+    },
+    {
+        "type": "motion", "label": "预设动作", "icon": "🕺", "color": "#FF9800",
+        "fields": [
+            {"name": "motion_id", "label": "动作 ID", "kind": "number", "required": True},
+            {"name": "area", "label": "部位 1左臂/2右臂/3双臂/11全身", "kind": "number", "default": 2},
+            {"name": "wait_done", "label": "估时等待完成", "kind": "switch", "default": True},
+        ],
+    },
+    {
+        "type": "emoji", "label": "表情", "icon": "😊", "color": "#E91E63",
+        "fields": [
+            {"name": "emotion_id", "label": "表情 ID", "kind": "number", "required": True},
+            {"name": "mode", "label": "模式 1一次/2循环", "kind": "number", "default": 1},
+        ],
+    },
+    {
+        "type": "velocity", "label": "速度", "icon": "🏃", "color": "#2196F3",
+        "fields": [
+            {"name": "forward", "label": "前后 m/s", "kind": "number", "default": 0.3},
+            {"name": "lateral", "label": "左右 m/s", "kind": "number", "default": 0},
+            {"name": "angular", "label": "旋转 rad/s", "kind": "number", "default": 0},
+            {"name": "duration", "label": "持续秒", "kind": "number", "default": 2},
+        ],
+    },
+    {
+        "type": "wait", "label": "等待", "icon": "⏱️", "color": "#9E9E9E",
+        "fields": [
+            {"name": "duration", "label": "等待秒", "kind": "number", "default": 1},
+        ],
+    },
+    {
+        "type": "mode", "label": "运动模式", "icon": "⚙️", "color": "#795548",
+        "fields": [
+            {"name": "action_desc", "label": "模式", "kind": "select", "required": True,
+             "default": "STAND_DEFAULT",
+             "options": [
+                 {"label": "稳定站立", "value": "STAND_DEFAULT"},
+                 {"label": "走跑", "value": "LOCOMOTION_DEFAULT"},
+                 {"label": "阻尼", "value": "DAMPING_DEFAULT"},
+                 {"label": "位控站立", "value": "JOINT_DEFAULT"},
+                 {"label": "零力矩/急停", "value": "PASSIVE_DEFAULT"},
+             ]},
+        ],
+    },
+    {
+        "type": "volume", "label": "音量", "icon": "🔊", "color": "#607D8B",
+        "fields": [
+            {"name": "volume", "label": "音量 0-100", "kind": "number", "default": 50},
+        ],
+    },
+    {
+        "type": "media", "label": "媒体", "icon": "🎬", "color": "#673AB7",
+        "fields": [
+            {"name": "file_name", "label": "文件名（PC3 上）", "kind": "text", "required": True},
+        ],
+    },
+    {
+        "type": "linkcraft", "label": "灵创动作", "icon": "🤖", "color": "#00ACC1",
+        "fields": [
+            {"name": "resource_key", "label": "动作包 key", "kind": "text", "required": True},
+            {"name": "resource_type", "label": "类型", "kind": "select", "default": "BODY_MONTION",
+             "options": [
+                 {"label": "全身", "value": "BODY_MONTION"},
+                 {"label": "手臂", "value": "ARM_MONTION"},
+             ]},
+        ],
+    },
+]
+
+
 # 模块级单例（与 security.controller 模式一致）
 runner = ChoreoRunner()

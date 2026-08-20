@@ -83,6 +83,23 @@ export interface ChoreoRun {
   ended_at: string
 }
 
+// ── 编排步骤类型清单（agent 上报，前端表单动态组装）──
+export interface ChoreoStepField {
+  name: string
+  label: string
+  kind: 'text' | 'number' | 'select' | 'switch'
+  required?: boolean
+  default?: unknown
+  options?: { label: string; value: string | number }[]
+}
+export interface ChoreoStepType {
+  type: string
+  label: string
+  icon: string
+  color: string
+  fields: ChoreoStepField[]
+}
+
 export const api = {
   listRobots: async (refresh = false): Promise<RobotRecord[]> => {
     const { data } = await platformApi().get(`/api/robots`, { params: refresh ? { refresh: 1 } : {} })
@@ -134,6 +151,10 @@ export const api = {
   choreoRunStatus: async (runId: string): Promise<ChoreoRun> => {
     const { data } = await platformApi().get(`/api/choreo/run/${runId}/status`)
     return data
+  },
+  getChoreoTypes: async (): Promise<ChoreoStepType[]> => {
+    const { data } = await platformApi().get(`/api/choreo/types`, { timeout: 3000 })
+    return data.types
   },
 }
 
