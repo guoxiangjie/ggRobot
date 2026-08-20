@@ -118,6 +118,21 @@ ggRobot/
 
 支持三种模式：`filter`（过滤器）、`auto`（独立自动前进）、`dry_run`（空跑测试）
 
+## 多机编排模块（choreo，设计见 docs/choreo-design.md）
+
+**模型**：时间线多轨 —— `编排 = {name, tracks: [{robot_id, steps: [{type, at, ...}]}]}`，每台机器人一条轨道，`at` = 相对执行开始的秒偏移。
+
+**同步**：时间戳锚定 —— 平台并发分发各机轨道（`POST /api/choreo/load`）→ 广播 `start_ts=now+1.5s`（`POST /api/choreo/start`）→ agent 以 `start_ts` 为时间轴原点按 `at` 到点触发。步骤间顺序执行（`max(due, 上一步完成时刻)`），同轨不打架、跨机按 at 对齐（局域网墙钟漂移 <100ms）。
+
+**执行链路**：
+- agent：`agents/x2/gg_robot/choreo.py`（ChoreoRunner + 内置执行器 `_exec_step`，**不复用** task/steps.py 的 handler——tts 子线程吞异常 + execute_step 异常不重抛都会丢失败信号）；失败 raise → 记 failed 跳过继续；WS 事件 `choreo.step/choreo.state` 经 `run_coroutine_threadsafe` 上报
+- platform：`ggplatform/choreo/runner.py`（分发/广播/聚合轮询 1s；掉线 3 次判 failed 其余继续；全局单 run 锁；stop 并发停止；10min 超时）+ `routes/choreo.py`（CRUD/run/stop/status/types）
+- 前端：`platform/desktop/src/renderer/src/pages/Choreo.tsx`（列表/执行监控/时间线多轨编辑器；步骤类型清单从 agent `/api/choreo/types` 动态拉取，本地 STEP_META 兜底）
+
+**回归测试**：`make test`（= `make test-agent` 单测 24 项 + `make test-e2e` 端到端 18 项，假 agent×2 全链路）。agent 单测无 rclpy 依赖，需 `/opt/homebrew/bin/python3.12`（系统 python3 是 3.9，项目用 3.10+ 语法）。
+
+**M4 实机验证**（待机器人上线）：`make agent-deploy` → `cd platform/desktop && pnpm dev` → 编排页选两台 active 机器人排时间线 → 执行 → 观察每机状态条与实际动作时序（TTS 超时会打断下一步，必要时加 wait 缓冲步骤）。
+
 ## 开发命令
 
 ```bash
@@ -126,6 +141,7 @@ make agent-deb     # 构建 X2 agent .deb（产物 agents/x2/packaging/build/）
 make agent-deploy  # scp deb 到机器人 + sudo apt install（免密）
 make agent-stop    # 停机器人上 1.0 旧服务（装机前清理 8000）
 make agent-status  # 查看 systemd 状态 + /api/health
+make test          # 多机编排回归：agent 单测 + platform e2e（42 项断言）
 make deploy/start  # 开发期调试：rsync 源码 + SSH 前台跑（正式分发走 deb）
 ```
 
