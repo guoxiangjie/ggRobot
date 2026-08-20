@@ -3,13 +3,13 @@
    间距标尺：8 / 12 / 16 / 24；卡片圆角 10；字号：标题 17 / 正文 13 / 辅助 12。 */
 
 :root {
-  /* 品牌色（唯一自定义色，其余全部 Semi token） */
-  --gg-accent: #4da6ff;
-  --gg-danger: #f44b4b;
-  --gg-success: #3cc98e;
+  /* 品牌色全部跟随主题变量——换主题自动跟随 */
+  --gg-accent: var(--semi-color-primary);
+  --gg-danger: var(--semi-color-danger);
+  --gg-success: var(--semi-color-success);
 
-  --titlebar-h: 38px;
-  --sidebar-w: 60px;
+  --titlebar-h: 48px;
+  --sidebar-w: 76px;
 }
 
 * { box-sizing: border-box; }
@@ -18,80 +18,65 @@ html, body, #root {
   height: 100%;
   margin: 0;
   overflow: hidden;
+  background: #ffffff;
   color: var(--semi-color-text-0);
   font-size: 13px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'PingFang SC', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── 自绘标题栏（mac 红绿灯区由 trafficLightPosition 让位）── */
+/* ── 自绘标题栏（仅右侧内容区，vibrancy 透出）── */
 .titlebar {
   height: var(--titlebar-h);
   -webkit-app-region: drag;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 84px;
+  padding-left: 16px;
   padding-right: 12px;
   background: var(--semi-color-nav-bg);
-  border-bottom: 1px solid var(--semi-color-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--semi-color-border) 50%, transparent);
   user-select: none;
 }
 .titlebar .title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--semi-color-text-2);
-  letter-spacing: 0.08em;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--semi-color-text-1);
+  letter-spacing: 0.06em;
 }
 .titlebar .spacer { flex: 1; }
 
-/* ── 全局急停按钮（标题栏常驻，安全件）── */
-.estop-btn {
-  -webkit-app-region: no-drag;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 24px;
-  padding: 0 10px;
-  border: none;
-  border-radius: 6px;
-  background: var(--gg-danger);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: filter 0.15s;
-}
-.estop-btn:hover { filter: brightness(1.15); }
-.estop-btn:disabled { cursor: default; }
-
-/* ── 左侧图标栏 ── */
+/* ── 左侧图标栏（全高；mac vibrancy 毛玻璃透桌面，CSS 只加淡色调）── */
 .sidebar {
   width: var(--sidebar-w);
   background: var(--semi-color-nav-bg);
-  border-right: 1px solid var(--semi-color-border);
+  border-right: 1px solid color-mix(in srgb, var(--semi-color-border) 50%, transparent);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: 8px;
-  gap: 4px;
+  padding-top: 44px;   /* 红绿灯区（约 48px 栏高 + 余量） */
+  padding-bottom: 12px;
+  gap: 10px;
 }
 .nav-item {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  width: 52px;
+  height: 58px;
+  border-radius: 12px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 3px;
   color: var(--semi-color-text-2);
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition: background 0.15s, color 0.15s;
 }
 .nav-item:hover { background: var(--semi-color-fill-0); color: var(--semi-color-text-0); }
-.nav-item.active { background: rgba(77, 166, 255, 0.16); color: var(--gg-accent); }
+.nav-item.active { background: var(--semi-color-primary-light-default); color: var(--gg-accent); }
+.nav-label { font-size: 11px; line-height: 1; }
 
-.content { flex: 1; overflow: auto; }
+.content { flex: 1; overflow: auto; background: #ffffff; }
 
 /* ── 页面骨架（标尺统一）── */
 .page { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
@@ -121,13 +106,15 @@ html, body, #root {
   50% { box-shadow: 0 0 0 5px rgba(60, 201, 142, 0); }
 }
 
-/* ── 机器人 tab（详情页）── */
+/* ── 机器人 tab（详情页；水平排列，覆盖侧栏的竖排样式）── */
 .robot-tabs {
   display: flex;
   gap: 6px;
   margin-bottom: 16px;
 }
 .robot-tabs .nav-item {
+  flex-direction: row;
+  gap: 0;
   width: auto;
   padding: 0 16px;
   height: 34px;
@@ -135,3 +122,39 @@ html, body, #root {
   text-decoration: none;
   border-radius: 8px;
 }
+
+/* ── 多机编排（Choreo 页）── */
+.choreo-card { padding: 16px 18px; background: var(--semi-color-bg-1); border: 1px solid var(--semi-color-border); }
+.choreo-run-bar {
+  display: flex; align-items: center; padding: 10px 16px; margin-top: 16px;
+  border: 1px solid var(--semi-color-primary-light-default);
+  border-radius: 10px; background: var(--semi-color-primary-light-default);
+}
+.choreo-track {
+  width: 100%; border: 1px solid var(--semi-color-border); border-radius: 10px; padding: 10px 14px;
+}
+.choreo-track-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.choreo-track-name { font-weight: 700; font-size: 14px; }
+.choreo-track-count { font-size: 12px; color: var(--semi-color-text-2); flex: 1; }
+.choreo-steps { display: flex; flex-wrap: wrap; gap: 8px; min-height: 34px; align-items: center; }
+.choreo-step {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 8px; border: 1px solid;
+  background: var(--semi-color-bg-1); cursor: pointer; font-size: 12px;
+  transition: transform 0.12s;
+}
+.choreo-step:hover { transform: translateY(-1px); }
+.choreo-step-at { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--semi-color-text-2); }
+.choreo-step-sum { color: var(--semi-color-text-2); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choreo-step-del {
+  display: none; position: absolute; top: -6px; right: -6px; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--semi-color-danger); color: #fff;
+  align-items: center; justify-content: center; cursor: pointer;
+}
+.choreo-step:hover .choreo-step-del { display: inline-flex; }
+.choreo-type-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 14px 8px; border: 1px solid var(--semi-color-border); border-radius: 10px;
+  cursor: pointer; font-size: 12px; transition: border-color 0.15s, background 0.15s;
+}
+.choreo-type-pick:hover { border-color: var(--semi-color-primary); background: var(--semi-color-primary-light-default); }

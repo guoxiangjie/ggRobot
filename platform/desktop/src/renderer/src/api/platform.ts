@@ -42,6 +42,47 @@ export interface RobotSummary {
   last_ip: string
 }
 
+// ── 多机编排 ──
+export interface ChoreoStep {
+  type: string
+  at: number
+  [k: string]: unknown
+}
+export interface ChoreoTrack {
+  robot_id: string
+  robot_name: string
+  steps: ChoreoStep[]
+}
+export interface Choreo {
+  id: string
+  name: string
+  desc: string
+  tracks: ChoreoTrack[]
+  robot_count?: number
+  step_count?: number
+  created_at?: string
+  updated_at?: string
+}
+export interface ChoreoRunRobot {
+  robot_id: string
+  name: string
+  state: string
+  current: number
+  total: number
+  failed: { index: number; type: string; at: number; error: string }[]
+  error?: string
+}
+export interface ChoreoRun {
+  run_id: string
+  choreo_id: string
+  name: string
+  state: string
+  start_ts: number
+  robots: ChoreoRunRobot[]
+  created_at: string
+  ended_at: string
+}
+
 export const api = {
   listRobots: async (refresh = false): Promise<RobotRecord[]> => {
     const { data } = await platformApi().get(`/api/robots`, { params: refresh ? { refresh: 1 } : {} })
@@ -64,10 +105,43 @@ export const api = {
     })
     return data.found
   },
+  // ── 编排 ──
+  listChoreos: async (): Promise<Choreo[]> => {
+    const { data } = await platformApi().get('/api/choreos')
+    return data.choreos
+  },
+  getChoreo: async (id: string): Promise<Choreo> => {
+    const { data } = await platformApi().get(`/api/choreos/${id}`)
+    return data
+  },
+  saveChoreo: async (choreo: { id?: string; name: string; desc: string; tracks: ChoreoTrack[] }): Promise<Choreo> => {
+    const { data } = choreo.id
+      ? await platformApi().patch(`/api/choreos/${choreo.id}`, choreo)
+      : await platformApi().post('/api/choreos', choreo)
+    return data
+  },
+  deleteChoreo: async (id: string): Promise<void> => {
+    await platformApi().delete(`/api/choreos/${id}`)
+  },
+  runChoreo: async (id: string): Promise<{ ok: boolean; run_id?: string; offline?: string[]; error?: string }> => {
+    const { data } = await platformApi().post(`/api/choreos/${id}/run`)
+    return data
+  },
+  stopChoreoRun: async (runId: string): Promise<{ ok: boolean }> => {
+    const { data } = await platformApi().post(`/api/choreo/run/${runId}/stop`)
+    return data
+  },
+  choreoRunStatus: async (runId: string): Promise<ChoreoRun> => {
+    const { data } = await platformApi().get(`/api/choreo/run/${runId}/status`)
+    return data
+  },
 }
 
-/**hub WS — 多机状态聚合订阅 */
-export function hubWs(onRobots: (robots: RobotSummary[]) => void): () => void {
+/**hub WS — 多机状态聚合订阅（robots + 编排运行） */
+export function hubWs(
+  onRobots: (robots: RobotSummary[]) => void,
+  onChoreo?: (runs: ChoreoRun[]) => void,
+): () => void {
   const port = useAppStore.getState().port
   let ws: WebSocket | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -77,8 +151,11 @@ export function hubWs(onRobots: (robots: RobotSummary[]) => void): () => void {
     ws = new WebSocket(`ws://127.0.0.1:${port}/hub`)
     ws.onmessage = (ev) => {
       try {
-        const msg = JSON.parse(ev.data) as { type: string; robots?: RobotSummary[] }
-        if (msg.type === 'hub' && msg.robots) onRobots(msg.robots)
+        const msg = JSON.parse(ev.data) as { type: string; robots?: RobotSummary[]; choreo?: ChoreoRun[] }
+        if (msg.type === 'hub') {
+          if (msg.robots) onRobots(msg.robots)
+          if (msg.choreo && onChoreo) onChoreo(msg.choreo)
+        }
       } catch { /* */ }
     }
     ws.onclose = () => {
