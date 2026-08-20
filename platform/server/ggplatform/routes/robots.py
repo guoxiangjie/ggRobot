@@ -19,16 +19,18 @@ class RobotCreate(BaseModel):
     sn: str
     name: str = ""
     model: str = "x2"
+    port: int = 8300
 
 
 class RobotPatch(BaseModel):
     name: Optional[str] = None
+    port: Optional[int] = None
 
 
 def _robot_dict(rb: Robot, include_token: bool = True) -> dict:
     d = {
         "id": rb.id, "sn": rb.sn, "name": rb.name, "model": rb.model,
-        "status": rb.status, "last_ip": rb.last_ip,
+        "status": rb.status, "last_ip": rb.last_ip, "port": rb.port,
         "last_seen": rb.last_seen.isoformat() if rb.last_seen else None,
         "created_at": rb.created_at.isoformat(),
     }
@@ -77,7 +79,7 @@ async def create_robot(req: RobotCreate):
         if exist:
             raise HTTPException(409, f"SN 已登记: {req.sn}")
         rb = Robot(sn=req.sn, name=req.name or req.sn, model=req.model,
-                   token=secrets.token_urlsafe(24))
+                   token=secrets.token_urlsafe(24), port=req.port)
         s.add(rb)
         s.commit()
         s.refresh(rb)
@@ -92,6 +94,8 @@ async def patch_robot(robot_id: str, req: RobotPatch):
             raise HTTPException(404, "robot not found")
         if req.name is not None:
             rb.name = req.name
+        if req.port is not None:
+            rb.port = req.port
         s.add(rb)
         s.commit()
         return _robot_dict(rb)

@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/pair")
 class PairPrepare(BaseModel):
     ip: str
     name: str = ""
+    port: int = 8300
 
 
 class PairRegister(BaseModel):
@@ -24,6 +25,7 @@ class PairRegister(BaseModel):
     ip: str
     name: str = ""
     model: str = "x2"
+    port: int = 8300
 
 
 @router.post("/register")
@@ -35,12 +37,14 @@ async def pair_register(req: PairRegister):
         if rb:
             rb.token = token
             rb.last_ip = req.ip
+            rb.port = req.port
             rb.status = "pending"
             if req.name:
                 rb.name = req.name
         else:
             rb = Robot(sn=req.sn, name=req.name or f"{req.model}-{req.sn[-4:]}",
-                       model=req.model, token=token, status="pending", last_ip=req.ip)
+                       model=req.model, token=token, status="pending",
+                       last_ip=req.ip, port=req.port)
         s.add(rb)
         s.commit()
         s.refresh(rb)
@@ -72,11 +76,12 @@ async def pair_prepare(req: PairPrepare):
             # 已登记（重装场景）：更新 token 为新值，保持身份/别名
             rb.token = token
             rb.last_ip = req.ip
+            rb.port = req.port
             rb.status = "pending"
         else:
             rb = Robot(sn=sn, name=req.name or f"{health.get('model', 'robot')}-{sn[-4:]}",
                        model=health.get("model", "x2"), token=token,
-                       status="pending", last_ip=req.ip)
+                       status="pending", last_ip=req.ip, port=req.port)
         s.add(rb)
         s.commit()
         s.refresh(rb)

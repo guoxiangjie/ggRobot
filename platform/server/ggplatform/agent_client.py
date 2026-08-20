@@ -3,7 +3,7 @@
 import httpx
 
 AGENT_PORT = 8300
-_HEALTH_TIMEOUT = 1.0
+_HEALTH_TIMEOUT = 2.0   # agent 事件循环偶发繁忙，1s 太紧会闪断（另有消抖兜底）
 _STATUS_TIMEOUT = 2.5
 _CAPS_TIMEOUT = 4.0
 
@@ -38,6 +38,67 @@ async def fetch_capabilities(ip: str, token: str, port: int = AGENT_PORT) -> dic
     try:
         async with httpx.AsyncClient(timeout=_CAPS_TIMEOUT) as c:
             r = await c.get(f"http://{ip}:{port}/api/capabilities",
+                            headers={"Authorization": f"Bearer {token}"})
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return None
+
+
+# ── 多机编排（choreo 协议，docs/choreo-design.md §3）──
+
+_CHOREO_TIMEOUT = 5.0
+
+
+async def choreo_load(ip: str, token: str, run_id: str, steps: list, port: int = AGENT_PORT) -> dict | None:
+    """预分发本机轨道"""
+    try:
+        async with httpx.AsyncClient(timeout=_CHOREO_TIMEOUT) as c:
+            r = await c.post(f"http://{ip}:{port}/api/choreo/load",
+                             json={"run_id": run_id, "steps": steps},
+                             headers={"Authorization": f"Bearer {token}"})
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return None
+
+
+async def choreo_start(ip: str, token: str, run_id: str, start_ts: float, port: int = AGENT_PORT) -> dict | None:
+    """广播开始（绝对墙钟时刻）"""
+    try:
+        async with httpx.AsyncClient(timeout=_CHOREO_TIMEOUT) as c:
+            r = await c.post(f"http://{ip}:{port}/api/choreo/start",
+                             json={"run_id": run_id, "start_ts": start_ts},
+                             headers={"Authorization": f"Bearer {token}"})
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return None
+
+
+async def choreo_stop(ip: str, token: str, run_id: str, port: int = AGENT_PORT) -> dict | None:
+    """停止单机编排"""
+    try:
+        async with httpx.AsyncClient(timeout=_CHOREO_TIMEOUT) as c:
+            r = await c.post(f"http://{ip}:{port}/api/choreo/stop",
+                             json={"run_id": run_id},
+                             headers={"Authorization": f"Bearer {token}"})
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return None
+
+
+async def choreo_status(ip: str, token: str, run_id: str, port: int = AGENT_PORT) -> dict | None:
+    """查询单机编排状态"""
+    try:
+        async with httpx.AsyncClient(timeout=_CHOREO_TIMEOUT) as c:
+            r = await c.get(f"http://{ip}:{port}/api/choreo/status",
+                            params={"run_id": run_id},
                             headers={"Authorization": f"Bearer {token}"})
             if r.status_code == 200:
                 return r.json()

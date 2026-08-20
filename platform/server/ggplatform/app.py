@@ -32,9 +32,11 @@ def create_app() -> FastAPI:
     from .routes.robots import router as robots_router
     from .routes.pair import router as pair_router
     from .routes.hub import router as hub_router
+    from .routes.choreo import router as choreo_router
     app.include_router(robots_router)
     app.include_router(pair_router)
     app.include_router(hub_router)
+    app.include_router(choreo_router)
 
     @app.get("/healthz")
     async def healthz():

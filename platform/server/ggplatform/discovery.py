@@ -11,6 +11,9 @@ from .agent_client import fetch_health, fetch_status
 SCAN_TIMEOUT = 0.3   # 每 IP TCP 探测超时
 SCAN_CONCURRENCY = 64
 
+# 在线判定消抖：连续失败计数（robot_id → 次数；连续 ≥2 才判离线）
+_fail_counts: dict[str, int] = {}
+
 
 async def _probe(ip: str) -> dict | None:
     """探测单 IP：TCP 8300 通 → GET /api/health"""
@@ -84,7 +87,13 @@ async def refresh_robot_online_state(robot: Robot) -> dict:
 
     health = await fetch_health(ip)
     if health is None:
+        # 消抖：偶发超时（agent 事件循环忙/网络微抖）沿用在线，连续 2 次失败才判离线
+        fails = _fail_counts.get(robot.id, 0) + 1
+        _fail_counts[robot.id] = fails
+        if fails < 2:
+            summary["online"] = True   # 宽限一轮
         return summary
+    _fail_counts.pop(robot.id, None)
 
     summary["online"] = True
     summary["version"] = health.get("version", "")

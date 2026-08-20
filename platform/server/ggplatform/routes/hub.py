@@ -26,7 +26,11 @@ async def _broadcaster():
             continue
         try:
             summaries = await refresh_all()
-            payload = json.dumps({"type": "hub", "robots": summaries}, ensure_ascii=False)
+            from ..choreo.runner import runner as choreo_runner
+            payload = json.dumps(
+                {"type": "hub", "robots": summaries,
+                 "choreo": choreo_runner.active_runs()},
+                ensure_ascii=False)
             dead = []
             for ws in list(_subscribers):
                 try:
@@ -49,7 +53,11 @@ async def hub(ws: WebSocket):
     # 连上立即推一次全量
     try:
         summaries = await refresh_all()
-        await ws.send_text(json.dumps({"type": "hub", "robots": summaries}, ensure_ascii=False))
+        from ..choreo.runner import runner as choreo_runner
+        await ws.send_text(json.dumps(
+            {"type": "hub", "robots": summaries,
+             "choreo": choreo_runner.active_runs()},
+            ensure_ascii=False))
     except Exception:
         pass
     logger.info(f"🛰 hub 订阅者 +1（共 {len(_subscribers)}）")
