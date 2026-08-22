@@ -19,6 +19,7 @@ import uuid
 from collections import deque
 from datetime import datetime, timezone
 
+from ..routes.third import invoke_third
 from ..agent_client import (
     choreo_load, choreo_start, choreo_stop, choreo_status,
 )
@@ -103,13 +104,17 @@ class ChoreoRunner:
             if not rb.get("ip"):
                 offline.append(f"{rb.get('name', rid)}(无 IP)")
                 continue
+            # 三方步骤（third:*）由 platform 按时间轴代发，不进机器人轨道
+            agent_steps = [x for x in steps if not str(x.get("type", "")).startswith("third:")]
+            third_steps = [(i, x) for i, x in enumerate(steps) if str(x.get("type", "")).startswith("third:")]
             run.robots.append({
                 "robot_id": rid, "name": rb.get("name", rid),
                 "ip": rb["ip"], "port": int(rb.get("port", 8300) or 8300),
                 "token": rb.get("token", ""),
                 "state": RB_LOADING, "current": -1, "total": len(steps),
                 "failed": [], "error": "", "fail_count": 0,
-                "_steps": steps,
+                "_steps": agent_steps,
+                "_third": third_steps,
             })
         if not run.robots:
             return {"ok": False, "error": "没有可执行的机器人轨道"}
@@ -158,10 +163,11 @@ class ChoreoRunner:
         return list(self._history)
 
     def _record_history(self, run: ChoreoRun) -> None:
-        """run 终态时记入历史（清理 _steps 内部字段）"""
+        """run 终态时记入历史（清理内部字段）"""
         d = run.to_dict()
         for rb in d["robots"]:
             rb.pop("_steps", None)
+            rb.pop("_third", None)
         self._history.appendleft(d)
 
     # ── 执行流程（后台 task）──
@@ -188,6 +194,11 @@ class ChoreoRunner:
             ))
             logger.info(f"🎬 广播开始 run={run.run_id} start_ts={run.start_ts:.3f}")
 
+            # 三方步骤：按时间轴到点代发（失败记入该机 failed，不阻塞机器人）
+            for rb in alive:
+                for idx, step in rb.get("_third", []):
+                    asyncio.create_task(self._exec_third(run, rb, idx, step))
+
             # 3. 监控轮询聚合
             deadline = time.time() + RUN_TIMEOUT
             while time.time() < deadline:
@@ -202,26 +213,68 @@ class ChoreoRunner:
                         rb["state"] = RB_FAILED
                         rb["error"] = "run 超时"
 
-            run.state = "finished"
+            # 终态映射：任一机被主动停止 → stopped（区分"演完"与"被停"）；否则有失败 → failed
+            states = {rb["state"] for rb in run.robots}
+            if RB_STOPPED in states:
+                run.state = "stopped"
+            elif RB_FAILED in states:
+                run.state = "failed"
+            else:
+                run.state = "finished"
             run.ended_at = self._now()
             logger.info(
                 f"🎬 编排结束 run={run.run_id} 机器 "
                 + ", ".join(f"{rb['name']}:{rb['state']}(fail {len(rb['failed'])})" for rb in run.robots))
             self._clear_active(run.run_id)
             self._record_history(run)
-        except Exception as e:
+        except Exception:
             logger.exception(f"🎬 编排执行异常 run={run.run_id}")
             run.state = "failed"
             run.ended_at = self._now()
             self._clear_active(run.run_id)
             self._record_history(run)
 
+    async def _exec_third(self, run: ChoreoRun, rb: dict, idx: int, step: dict) -> None:
+        """三方步骤：睡到点 → 查库渲染 → 代发 HTTP；失败记入该机 failed"""
+        api_id = str(step.get("type", ""))[6:]   # third:<id>
+        due = run.start_ts + float(step.get("at", 0.0))
+        await asyncio.sleep(max(0.0, due - time.time()))
+        logger.info(f"🔌 三方步骤 run={run.run_id} api={api_id[:8]} at={step.get('at')}")
+        from sqlmodel import Session
+        from ..db import engine
+        from ..models import ThirdApi
+        try:
+            with Session(engine) as s:
+                a = s.get(ThirdApi, api_id)
+                if a is None:
+                    raise RuntimeError("三方能力已被删除")
+                import json as _json
+                try:
+                    headers = _json.loads(a.headers_json or "[]")
+                except _json.JSONDecodeError:
+                    headers = []
+                args = {k: v for k, v in step.items()
+                        if k not in ("type", "at", "duration")}
+                r = await invoke_third(a.method, a.url, headers, a.body, args, a.timeout)
+            if not r.get("ok"):
+                rb["failed"].append({
+                    "index": idx, "type": step.get("type"), "at": step.get("at", 0.0),
+                    "error": f"HTTP {r.get('status')}: {str(r.get('text'))[:120]}",
+                })
+                logger.warning(f"🔌 三方步骤失败: {r.get('status')} {str(r.get('text'))[:120]}")
+        except Exception as e:
+            rb["failed"].append({
+                "index": idx, "type": step.get("type"), "at": step.get("at", 0.0),
+                "error": str(e)[:200],
+            })
+            logger.warning(f"🔌 三方步骤异常: {e}")
+
     async def _load_one(self, run: ChoreoRun, rb: dict) -> bool:
         """分发单机轨道；失败 → 标记该机 failed（跳过继续）"""
         resp = await choreo_load(rb["ip"], rb["token"], run.run_id, rb.get("_steps") or [], rb["port"])
         if resp is None or not resp.get("ok"):
             rb["state"] = RB_FAILED
-            rb["error"] = "load 失败（agent 无响应/会话被占）"
+            rb["error"] = (resp or {}).get("error") or "load 失败（agent 无响应）"
             logger.warning(f"🎬 分发失败 {rb['name']}: {rb['error']}")
             return False
         rb["state"] = RB_RUNNING

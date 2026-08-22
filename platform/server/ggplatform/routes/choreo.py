@@ -13,14 +13,13 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..db import engine
-from ..models import Robot, Choreography
+from ..models import Robot, Choreography, ThirdApi
 from ..choreo.runner import runner
 from ..agent_client import fetch_choreo_types
 
@@ -42,13 +41,15 @@ def _choreo_dict(ch: Choreography, include_tracks: bool = True) -> dict:
         "created_at": ch.created_at.isoformat(),
         "updated_at": ch.updated_at.isoformat(),
     }
+    try:
+        tracks = json.loads(ch.tracks_json or "[]")
+    except json.JSONDecodeError:
+        tracks = []
+    # 统计无条件返回（列表接口也要靠 step_count 驱动执行按钮可用性）
+    d["robot_count"] = len(tracks)
+    d["step_count"] = sum(len(t.get("steps") or []) for t in tracks)
     if include_tracks:
-        try:
-            d["tracks"] = json.loads(ch.tracks_json or "[]")
-        except json.JSONDecodeError:
-            d["tracks"] = []
-        d["robot_count"] = len(d["tracks"])
-        d["step_count"] = sum(len(t.get("steps") or []) for t in d["tracks"])
+        d["tracks"] = tracks
     return d
 
 
@@ -190,4 +191,22 @@ async def choreo_types(robot_id: str = ""):
     st = await fetch_choreo_types(rip, rtoken, rport)
     if st is None:
         raise HTTPException(502, f"{rname} agent 无响应")
-    return {"robot_id": rid, "robot_name": rname, "types": st.get("types", [])}
+    types = st.get("types", [])
+    # 三方能力注入为步骤类型（third:<id>）——前端编辑器动态生成表单，零前端改造
+    with Session(engine) as s:
+        for a in s.exec(select(ThirdApi).order_by(ThirdApi.created_at)).all():
+            try:
+                params = json.loads(a.params_json or "[]")
+            except json.JSONDecodeError:
+                params = []
+            types.append({
+                "type": f"third:{a.id}",
+                "label": f"三方 · {a.name}",
+                "icon": "🔌", "color": "#7E57C2",
+                "fields": [
+                    {"name": p.get("key", ""), "label": p.get("label") or p.get("key", ""),
+                     "kind": "text", "default": p.get("default", "")}
+                    for p in params if p.get("key")
+                ],
+            })
+    return {"robot_id": rid, "robot_name": rname, "types": types}

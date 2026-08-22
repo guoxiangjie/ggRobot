@@ -116,6 +116,8 @@ async def refresh_robot_online_state(robot: Robot) -> dict:
         if db_robot:
             db_robot.last_seen = utcnow()
             db_robot.status = summary["status"]
+            if summary["version"]:
+                db_robot.agent_version = summary["version"]
             s.add(db_robot)
             s.commit()
     return summary

@@ -52,7 +52,7 @@ _CHOREO_TIMEOUT = 5.0
 
 
 async def choreo_load(ip: str, token: str, run_id: str, steps: list, port: int = AGENT_PORT) -> dict | None:
-    """预分发本机轨道"""
+    """预分发本机轨道。会话被占（423）时返回 {"ok": False, "error": "...被占用"} 供前端提示接管"""
     try:
         async with httpx.AsyncClient(timeout=_CHOREO_TIMEOUT) as c:
             r = await c.post(f"http://{ip}:{port}/api/choreo/load",
@@ -60,6 +60,9 @@ async def choreo_load(ip: str, token: str, run_id: str, steps: list, port: int =
                              headers={"Authorization": f"Bearer {token}"})
             if r.status_code == 200:
                 return r.json()
+            if r.status_code == 423:   # locked —— 区别于无响应，前端给出明确指引
+                who = (r.json().get("locked_by") or {}).get("name") or "其他客户端"
+                return {"ok": False, "error": f"控制权被「{who}」占用（可能是快捷遥控/控制页在连），关闭它或稍后再试"}
     except Exception:
         pass
     return None

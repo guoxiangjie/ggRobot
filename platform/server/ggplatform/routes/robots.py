@@ -31,6 +31,7 @@ def _robot_dict(rb: Robot, include_token: bool = True) -> dict:
     d = {
         "id": rb.id, "sn": rb.sn, "name": rb.name, "model": rb.model,
         "status": rb.status, "last_ip": rb.last_ip, "port": rb.port,
+        "agent_version": rb.agent_version or "",
         "last_seen": rb.last_seen.isoformat() if rb.last_seen else None,
         "created_at": rb.created_at.isoformat(),
     }
