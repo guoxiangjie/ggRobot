@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>机器人集群控制系统 · 整体架构</title>
+<style>
+  body { margin: 0; background: #eef1f6; font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 24px; }
+  .bar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+  button { padding: 10px 22px; font-size: 15px; border: none; border-radius: 8px; background: #2563eb; color: #fff; cursor: pointer; }
+  button:hover { background: #1d4ed8; }
+  .tip { color: #64748b; font-size: 13px; }
+  #wrap { background: #fff; border-radius: 12px; box-shadow: 0 6px 24px rgba(15,23,42,.08); padding: 8px; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button onclick="dl()">下载架构图 PNG</button>
+  <span class="tip">2 倍分辨率导出 · 也可直接对下图截图</span>
+</div>
+<div id="wrap">
+<svg id="arch" xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#64748b"/></marker>
+    <linearGradient id="gTitle" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1e3a8a"/><stop offset="1" stop-color="#2563eb"/></linearGradient>
+  </defs>
+  <rect width="1400" height="900" fill="#ffffff"/>
+
+  <!-- ═══ 标题 ═══ -->
+  <rect x="40" y="28" width="6" height="46" rx="3" fill="url(#gTitle)"/>
+  <text x="62" y="52" font-size="27" font-weight="800" fill="#0f172a">机器人集群控制系统 · 整体架构</text>
+  <text x="62" y="76" font-size="14" fill="#64748b">v2.1.0 ｜ 一台电脑 · 局域网 · 管理任意数量人形机器人 ｜ 三端解耦，能力契约三端唯一真源</text>
+
+  <!-- ═══ ① 桌面客户端 ═══ -->
+  <rect x="40" y="100" width="1320" height="238" rx="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <rect x="40" y="100" width="1320" height="34" rx="14" fill="#3b82f6"/>
+  <text x="60" y="123" font-size="16" font-weight="700" fill="#fff">① 桌面客户端（Electron · dmg / exe 分发）</text>
+  <text x="1310" y="123" font-size="12" fill="#dbeafe" text-anchor="end">Mac / Windows</text>
+
+  <!-- Renderer 功能模块 -->
+  <rect x="64" y="148" width="1272" height="56" rx="10" fill="#fff" stroke="#bfdbfe"/>
+  <text x="78" y="168" font-size="12.5" font-weight="700" fill="#1d4ed8">功能模块（React + Semi Design）</text>
+  <g font-size="12.5" fill="#334155">
+    <rect x="78"  y="176" width="118" height="22" rx="6" fill="#dbeafe"/><text x="137"  y="191" text-anchor="middle">总览·设备管理</text>
+    <rect x="202" y="176" width="118" height="22" rx="6" fill="#dbeafe"/><text x="261"  y="191" text-anchor="middle">机器人操控×8</text>
+    <rect x="326" y="176" width="118" height="22" rx="6" fill="#dbeafe"/><text x="385"  y="191" text-anchor="middle">自由控制</text>
+    <rect x="450" y="176" width="118" height="22" rx="6" fill="#dbeafe"/><text x="509"  y="191" text-anchor="middle">多机编排</text>
+    <rect x="574" y="176" width="118" height="22" rx="6" fill="#dbeafe"/><text x="633"  y="191" text-anchor="middle">地图·建图</text>
+    <rect x="698" y="176" width="118" height="22" rx="6" fill="#dbeafe"/><text x="757"  y="191" text-anchor="middle">展馆 3D</text>
+    <rect x="822" y="176" width="118" height="22" rx="6" fill="#dbeafe"/><text x="881"  y="191" text-anchor="middle">三方能力</text>
+    <rect x="946" y="176" width="118" height="22" rx="6" fill="#dbeafe"/><text x="1005" y="191" text-anchor="middle">本地语音转写</text>
+    <rect x="1070" y="176" width="118" height="22" rx="6" fill="#dbeafe"/><text x="1129" y="191" text-anchor="middle">实验室</text>
+    <rect x="1194" y="176" width="128" height="22" rx="6" fill="#e2e8f0"/><text x="1258" y="191" text-anchor="middle">装机向导/更新</text>
+  </g>
+
+  <!-- Main -->
+  <rect x="64" y="214" width="620" height="52" rx="10" fill="#fff" stroke="#bfdbfe"/>
+  <text x="78" y="234" font-size="12.5" font-weight="700" fill="#1d4ed8">主进程 Main</text>
+  <text x="78" y="252" font-size="12" fill="#475569">多窗口体系（编排编辑·建图工作台·快捷遥控） ｜ SSH 装机/批量更新 ｜ 模型下载器</text>
+
+  <!-- Sidecar -->
+  <rect x="700" y="214" width="636" height="52" rx="10" fill="#fff" stroke="#bfdbfe"/>
+  <text x="714" y="234" font-size="12.5" font-weight="700" fill="#1d4ed8">平台服务 Sidecar（FastAPI · 127.0.0.1:8310 · SQLite）</text>
+  <text x="714" y="252" font-size="12" fill="#475569">设备登记/网段扫描 ｜ hub 5s 聚合 ｜ 编排执行器 ｜ 三方能力 ｜ 离线语音转写引擎</text>
+
+  <text x="70" y="300" font-size="12" fill="#64748b">内置能力：日/夜主题 ｜ 相机多路+拍照 ｜ 快捷遥控（键盘/失焦安全停止） ｜ VAD 片段回放</text>
+  <text x="70" y="322" font-size="12" fill="#64748b">语音转写双档：paraformer 82MB（随包即用）+ SenseVoice 230MB（可选下载）</text>
+
+  <!-- ═══ 网络层 ═══ -->
+  <g stroke="#64748b" stroke-width="2" marker-end="url(#ar)">
+    <line x1="380" y1="338" x2="380" y2="430"/>
+    <line x1="700" y1="338" x2="700" y2="430"/>
+    <line x1="1020" y1="338" x2="1020" y2="430"/>
+    <line x1="1290" y1="338" x2="1290" y2="430" stroke-dasharray="6 4"/>
+  </g>
+  <rect x="440" y="364" width="500" height="30" rx="15" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="690" y="384" font-size="13.5" font-weight="700" fill="#334155" text-anchor="middle">局域网 · HTTP + WebSocket ｜ Bearer Token 鉴权 ｜ 会话锁（单控制者）</text>
+  <text x="1300" y="368" font-size="11.5" fill="#94a3b8">SSH·apt 免密</text>
+  <text x="1300" y="384" font-size="11.5" fill="#94a3b8">（装机/更新链路）</text>
+
+  <!-- ═══ ② 机器人集群 ═══ -->
+  <rect x="40" y="430" width="1320" height="240" rx="14" fill="#fff7ed" stroke="#f59e0b" stroke-width="2"/>
+  <rect x="40" y="430" width="1320" height="34" rx="14" fill="#f59e0b"/>
+  <text x="60" y="453" font-size="16" font-weight="700" fill="#fff">② 机器人集群（每台运行 Agent · .deb 安装 · systemd 常驻）</text>
+  <text x="1310" y="453" font-size="12" fill="#ffedd5" text-anchor="end">X2 → A2 / A3 / 机器狗（能力契约零界面适配）</text>
+
+  <!-- 三台机器人卡 -->
+  <g>
+    <rect x="76" y="480" width="330" height="150" rx="10" fill="#fff" stroke="#fdba74"/>
+    <text x="92" y="504" font-size="14" font-weight="800" fill="#c2410c">🤖 机器人 A</text>
+    <text x="92" y="528" font-size="12" fill="#475569">Agent :8300（FastAPI + rclpy 守护线程）</text>
+    <text x="92" y="548" font-size="12" fill="#475569">命令队列（线程安全）→ ROS2 服务</text>
+    <text x="92" y="568" font-size="12" fill="#475569">WS v2：传感器/相机帧/点云流</text>
+    <text x="92" y="588" font-size="12" fill="#475569">能力上报（动作清单 YAML 可热改）</text>
+    <text x="92" y="612" font-size="12" fill="#9a3412">编排引擎：时间戳锚定 · 到点触发</text>
+  </g>
+  <g>
+    <rect x="436" y="480" width="330" height="150" rx="10" fill="#fff" stroke="#fdba74"/>
+    <text x="452" y="504" font-size="14" font-weight="800" fill="#c2410c">🤖 机器人 B</text>
+    <text x="452" y="528" font-size="12" fill="#475569">同构 Agent（SN 物理身份 · 独立 token）</text>
+    <text x="452" y="548" font-size="12" fill="#475569">多机编排轨道独立分发</text>
+    <text x="452" y="568" font-size="12" fill="#475569">失败跳过继续 · 掉线自动判离</text>
+    <text x="452" y="588" font-size="12" fill="#475569">建图：激光点云 8Hz 推流</text>
+    <text x="452" y="612" font-size="12" fill="#9a3412">VAD 语音段采集（唤醒词激活）</text>
+  </g>
+  <g>
+    <rect x="796" y="480" width="330" height="150" rx="10" fill="#fff" stroke="#fdba74"/>
+    <text x="812" y="504" font-size="14" font-weight="800" fill="#c2410c">🤖 机器人 N</text>
+    <text x="812" y="528" font-size="12" fill="#475569">批量接入：网段扫描 → 一键装机</text>
+    <text x="812" y="548" font-size="12" fill="#475569">（1 分钟/台，含开机自启+配对）</text>
+    <text x="812" y="568" font-size="12" fill="#475569">批量固件升级：并发+进度+回滚</text>
+    <text x="812" y="588" font-size="12" fill="#475569">更新前语音播报 · 版本核对</text>
+    <text x="812" y="612" font-size="12" fill="#9a3412">sudoers 铁律：远端仅允许 apt</text>
+  </g>
+  <!-- 底部 SDK 层 -->
+  <rect x="1160" y="480" width="176" height="150" rx="10" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="1248" y="530" font-size="13.5" font-weight="700" fill="#92400e" text-anchor="middle">ROS2 / AimSDK</text>
+  <text x="1248" y="554" font-size="11.5" fill="#a16207" text-anchor="middle">运动控制 · 传感器</text>
+  <text x="1248" y="574" font-size="11.5" fill="#a16207" text-anchor="middle">SLAM · 语音 · 相机</text>
+  <text x="1248" y="600" font-size="11" fill="#b45309" text-anchor="middle">厂商生态</text>
+  <g stroke="#f59e0b" stroke-width="1.5" marker-end="url(#ar)" opacity=".6">
+    <line x1="406" y1="555" x2="1156" y2="555"/>
+  </g>
+
+  <!-- ═══ 核心机制条 ═══ -->
+  <rect x="40" y="692" width="1320" height="176" rx="14" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2"/>
+  <rect x="40" y="692" width="1320" height="34" rx="14" fill="#8b5cf6"/>
+  <text x="60" y="715" font-size="16" font-weight="700" fill="#fff">③ 四大核心机制</text>
+
+  <g>
+    <rect x="64" y="742" width="306" height="106" rx="10" fill="#fff" stroke="#c4b5fd"/>
+    <text x="80" y="766" font-size="13.5" font-weight="700" fill="#6d28d9">能力契约（三端解耦）</text>
+    <text x="80" y="790" font-size="11.5" fill="#475569">catalog.json 唯一真源，机器人上报</text>
+    <text x="80" y="808" font-size="11.5" fill="#475569">能力 → 界面自动组装；新型号接入</text>
+    <text x="80" y="826" font-size="11.5" fill="#475569">平台与界面零代码改动</text>
+  </g>
+  <g>
+    <rect x="388" y="742" width="306" height="106" rx="10" fill="#fff" stroke="#c4b5fd"/>
+    <text x="404" y="766" font-size="13.5" font-weight="700" fill="#6d28d9">多机同步（时间戳锚定）</text>
+    <text x="404" y="790" font-size="11.5" fill="#475569">平台广播统一绝对时刻 start_ts</text>
+    <text x="404" y="808" font-size="11.5" fill="#475569">各机本地到点触发，误差&lt;100ms</text>
+    <text x="404" y="826" font-size="11.5" fill="#475569">剪映式轨道编辑 · 拖拽编排</text>
+  </g>
+  <g>
+    <rect x="712" y="742" width="306" height="106" rx="10" fill="#fff" stroke="#c4b5fd"/>
+    <text x="728" y="766" font-size="13.5" font-weight="700" fill="#6d28d9">建图实时可视化</text>
+    <text x="728" y="790" font-size="11.5" fill="#475569">激光点云 6KB/帧推流 · 运动补偿</text>
+    <text x="728" y="808" font-size="11.5" fill="#475569">墙体轮廓随行走生长 + 轨迹线</text>
+    <text x="728" y="826" font-size="11.5" fill="#475569">窗内遥控闭环 · 边扫边看</text>
+  </g>
+  <g>
+    <rect x="1036" y="742" width="300" height="106" rx="10" fill="#fff" stroke="#c4b5fd"/>
+    <text x="1052" y="766" font-size="13.5" font-weight="700" fill="#6d28d9">三方能力扩展</text>
+    <text x="1052" y="790" font-size="11.5" fill="#475569">任意 HTTP 接口配置即用</text>
+    <text x="1052" y="808" font-size="11.5" fill="#475569">门禁/灯光/物联网 → 编排步骤</text>
+    <text x="1052" y="826" font-size="11.5" fill="#475569">平台代发，机器人无需外网</text>
+  </g>
+</svg>
+</div>
+
+<script>
+function dl() {
+  const svg = document.getElementById('arch')
+  const xml = new XMLSerializer().serializeToString(svg)
+  const img = new Image()
+  img.onload = function () {
+    const c = document.createElement('canvas')
+    c.width = svg.width.baseVal.value * 2
+    c.height = svg.height.baseVal.value * 2
+    const ctx = c.getContext('2d')
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, c.width, c.height)
+    ctx.drawImage(img, 0, 0, c.width, c.height)
+    c.toBlob(function (blob) {
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = '机器人集群控制系统-架构图.png'
+      a.click()
+      URL.revokeObjectURL(a.href)
+    }, 'image/png')
+  }
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml)
+}
+</script>
+</body>
+</html>
