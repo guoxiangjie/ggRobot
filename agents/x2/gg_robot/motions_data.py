@@ -1,13 +1,22 @@
-"""X2 静态能力数据 — 权威清单（从 1.0 web/src/config/motions.ts 与 TaskEditor.vue 移植）
+"""X2 静态能力数据 — 权威清单
 
-这是 agent 能力上报（capabilities.py）的数据源，前端不再硬编码动作/模式/表情表。
+数据源：config/motions.yaml（deb 打包带出）。
+  - 正式流程：仓库改 YAML → make agent-deb → 设备页批量更新
+  - 运维快捷：直接改机器人上 /opt/ggrobot-agent/config/motions.yaml → 重启 agent 即生效
+代码内保留默认清单做兜底：YAML 缺失/语法错误时使用，保证 agent 永远能启动。
+这是 agent 能力上报（capabilities.py）的数据源，前端不硬编码动作/模式/表情表。
 来源：AimSDK 文档 tbl-preset-motion（v0.8.0+）与实机验证结论。
 """
 
-# ── 预设动作 ─────────────────────────────
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# ── 内置默认清单（兜底；与 config/motions.yaml 同步维护）─────────────────
 # ⚠️ 所有预设动作必须在 STAND_DEFAULT（稳定站立）模式下执行，否则不动。
 # area 编码：1=左臂 2=右臂 3=双臂 11=全身；4=头部(4001/4002 待实机验证)
-MOTION_LIST = [
+_DEFAULT_MOTION_LIST = [
     # 手臂动作（area 1/2/3）
     {"motion": 1002, "area": 2, "name": "右手挥手"},
     {"motion": 1002, "area": 1, "name": "左手挥手"},
@@ -44,11 +53,7 @@ MOTION_LIST = [
     {"motion": 4002, "area": 4, "name": "摇头"},
 ]
 
-AREA_LABEL = {1: "左臂", 2: "右臂", 3: "双臂", 11: "全身", 4: "头部"}
-
-# ── 运动模式 ─────────────────────────────
-# SIT_DOWN / ZERO_TORQUE 后端只认数字 action_value，调用必须携带 numeric_value
-MODE_LIST = [
+_DEFAULT_MODE_LIST = [
     {"id": "STAND_DEFAULT", "name": "稳定站立"},
     {"id": "LOCOMOTION_DEFAULT", "name": "走跑"},
     {"id": "DAMPING_DEFAULT", "name": "阻尼"},
@@ -58,8 +63,7 @@ MODE_LIST = [
     {"id": "ZERO_TORQUE", "name": "零力矩", "numeric_value": 4},
 ]
 
-# ── 面部表情 ─────────────────────────────
-EMOJI_LIST = [
+_DEFAULT_EMOJI_LIST = [
     {"id": 1, "name": "眨眼"}, {"id": 10, "name": "平静"}, {"id": 20, "name": "游戏"},
     {"id": 30, "name": "卖萌"}, {"id": 40, "name": "闭眼"}, {"id": 50, "name": "睁眼"},
     {"id": 60, "name": "无聊"}, {"id": 80, "name": "睡着"}, {"id": 90, "name": "快乐"},
@@ -69,12 +73,35 @@ EMOJI_LIST = [
     {"id": 190, "name": "加倍愤怒"}, {"id": 200, "name": "崇拜"}, {"id": 220, "name": "充电"},
 ]
 
-# ── 速度档位（SDK 轴范围：forward/lateral ±0.2~1.0 m/s，angular ±0.1~1.0 rad/s）──
-GEAR_PRESETS = [
+_DEFAULT_GEAR_PRESETS = [
     {"id": "slow", "name": "慢速", "forward": 0.3, "lateral": 0.4, "angular": 0.3},
     {"id": "mid", "name": "中速", "forward": 0.5, "lateral": 0.6, "angular": 0.5},
     {"id": "fast", "name": "快速", "forward": 0.8, "lateral": 0.8, "angular": 0.8},
 ]
+
+# ── 加载 motions.yaml（缺失/写错 → 兜底默认，不炸启动）─────────────────
+
+
+def _load_yaml_list(key: str, default: list) -> list:
+    path = Path(__file__).resolve().parent.parent / "config" / "motions.yaml"
+    try:
+        import yaml
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        items = data.get(key)
+        if isinstance(items, list) and items:
+            return items
+        logger.warning(f"motions.yaml 段 [{key}] 缺失或为空，使用内置默认")
+    except Exception as e:
+        logger.warning(f"motions.yaml 加载失败（{e}），使用内置默认")
+    return default
+
+
+MOTION_LIST = _load_yaml_list("motions", _DEFAULT_MOTION_LIST)
+MODE_LIST = _load_yaml_list("modes", _DEFAULT_MODE_LIST)
+EMOJI_LIST = _load_yaml_list("emojis", _DEFAULT_EMOJI_LIST)
+GEAR_PRESETS = _load_yaml_list("gears", _DEFAULT_GEAR_PRESETS)
+
+AREA_LABEL = {1: "左臂", 2: "右臂", 3: "双臂", 11: "全身", 4: "头部"}
 
 # ── 开发者模式迁移白名单（文档 5.6；勿使用未提及的系统模式）──
 MIGRATE_STATES = ["Ready", "Develop_Audio_Linux", "Develop_Audio_ROS", "Develop_Nav", "Develop_MC"]

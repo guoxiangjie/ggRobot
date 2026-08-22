@@ -24,7 +24,8 @@ import asyncio
 import logging
 import threading
 import time
-from typing import Any
+
+from .motions_data import MOTION_LIST
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +216,12 @@ def _exec_step(node, step: dict) -> None:
         text = str(step.get("text", "") or "")
         if not text:
             raise ValueError("tts 缺 text")
+        # 配动手势（讲话手势域 21~48，仅上肢不出声）：先下发手势（不等）再播 TTS —— 边说边比划
+        ga = step.get("gesture_area")
+        if ga:
+            r2 = node._do_motion(int(ga), 6001, True)
+            if not r2.get("ok"):
+                logger.warning(f"🎬 配动手势下发失败 area={ga}: {r2}")
         ok = node._do_tts(text)
         if not ok:
             raise RuntimeError("TTS 下发失败")
@@ -291,6 +298,13 @@ CHOREO_STEP_TYPES: list[dict] = [
         "fields": [
             {"name": "text", "label": "播报文字", "kind": "text", "required": True},
             {"name": "wait_done", "label": "等播完", "kind": "switch", "default": True},
+            {"name": "gesture_area", "label": "配动手势（边说边做，仅上肢不出声）", "kind": "select",
+             "default": "",
+             "options": [{"label": "无", "value": ""}] + [
+                 {"label": m["name"], "value": str(m["area"])}
+                 for m in MOTION_LIST
+                 if 21 <= int(m["area"]) <= 48
+             ]},
         ],
     },
     {

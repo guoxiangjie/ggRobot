@@ -215,6 +215,27 @@ async def camera_pusher(interval: float = 0.1):
             pass
 
 
+async def cloud_pusher(interval: float = 0.125):
+    """建图中推送实时点云帧（topic: slam.cloud；slam_mapping=False 时零开销）
+    二进制: 4B大端ms时间戳 + [pose_x,pose_y,yaw(3×f32 LE) + n(u16) + n×(x,y int16 LE cm)]"""
+    _last_ts = 0.0
+    while True:
+        await asyncio.sleep(interval)
+        from .. import node as node_mod
+        _node = node_mod._node
+        if _node is None or not getattr(_node, "slam_mapping", False):
+            _last_ts = 0.0
+            continue
+        got = _node.get_cloud_frame()
+        if got is None:
+            continue
+        frame, ts = got
+        if ts == _last_ts:
+            continue   # 无新帧不重推
+        _last_ts = ts
+        await publish_frame("slam.cloud", frame)
+
+
 async def sys_pusher(interval: float = 10.0):
     """每 10s 推系统心跳（默认订阅，连接活性保底）"""
     import datetime

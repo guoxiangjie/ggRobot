@@ -12,15 +12,18 @@ MODEL = "x2"
 
 
 def _motion_actions() -> list[dict]:
-    return [
-        {
+    out = []
+    for m in motions_data.MOTION_LIST:
+        a = {
             "id": motions_data.motion_key(m["motion"], m["area"]),
             "name": m["name"],
             "area": m["area"],
             "requires_stand": True,  # 所有预设动作都必须 STAND 模式前置
         }
-        for m in motions_data.MOTION_LIST
-    ]
+        if m.get("duration"):       # yaml 实测时长（动作计时工具回填），编排块高/等待用
+            a["duration"] = float(m["duration"])
+        out.append(a)
+    return out
 
 
 def _cameras() -> list[dict]:

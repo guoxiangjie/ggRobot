@@ -14,10 +14,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """管理 WebSocket 推送任务的生命周期"""
-    from .ws.stream import sensor_pusher, camera_pusher, sys_pusher
+    from .ws.stream import sensor_pusher, camera_pusher, cloud_pusher, sys_pusher
     tasks = [
         asyncio.create_task(sensor_pusher()),
         asyncio.create_task(camera_pusher()),
+        asyncio.create_task(cloud_pusher()),
         asyncio.create_task(sys_pusher()),
     ]
     logger.info("📡 推送任务已启动（sensor 200ms / camera 100ms / sys 10s）")

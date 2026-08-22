@@ -20,13 +20,20 @@ echo "🔨 构建 ggrobot-agent $VER (arm64)..."
 rm -rf "$BUILD_DIR"
 mkdir -p "$PKG/DEBIAN" "$PKG/opt/ggrobot-agent"
 
-# ── 代码 + 依赖清单（排除缓存/资产按需）──
+# ── 代码 + 配置 + 依赖清单（排除缓存/资产按需）──
 rsync -a \
   --exclude '__pycache__' \
   --exclude '*.pyc' \
   --exclude '.DS_Store' \
   "$REPO_ROOT/agents/x2/gg_robot/" "$PKG/opt/ggrobot-agent/gg_robot/"
+mkdir -p "$PKG/opt/ggrobot-agent/config"
+cp "$REPO_ROOT/agents/x2/config/robot.yaml" "$PKG/opt/ggrobot-agent/config/"
+cp "$REPO_ROOT/agents/x2/config/motions.yaml" "$PKG/opt/ggrobot-agent/config/"
 cp "$REPO_ROOT/agents/x2/requirements.txt" "$PKG/opt/ggrobot-agent/"
+
+# ── 版本同源：deb 版本注入打包副本的 __version__
+#    （health 上报 == deb 文件名版本，桌面端「更新 Agent」的版本核对才准确）
+sed -i '' "s/^__version__ = .*/__version__ = \"$VER\"/" "$PKG/opt/ggrobot-agent/gg_robot/__init__.py"
 
 
 # ── DEBIAN 控制文件 ──

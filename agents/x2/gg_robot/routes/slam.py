@@ -41,7 +41,10 @@ async def start_mapping():
     if node_mod._cmd_queue is None:
         return {"ok": False, "error": "命令队列未就绪"}
     future = node_mod._cmd_queue.put("slam_command", cmd="start_mapping")
-    return future.result(timeout=5.0)
+    r = future.result(timeout=5.0)
+    if node_mod._node is not None and r.get("ok"):
+        node_mod._node.slam_mapping = True   # 开启实时点云推送
+    return r
 
 
 @router.post("/api/slam/mapping/stop")
@@ -50,7 +53,10 @@ async def stop_mapping(req: StopMappingRequest):
     if node_mod._cmd_queue is None:
         return {"ok": False, "error": "命令队列未就绪"}
     future = node_mod._cmd_queue.put("slam_command", cmd=f"stop_mapping:{req.map_name}")
-    return future.result(timeout=5.0)
+    r = future.result(timeout=5.0)
+    if node_mod._node is not None:
+        node_mod._node.slam_mapping = False   # 停止实时点云推送
+    return r
 
 
 # ── 地图 ──

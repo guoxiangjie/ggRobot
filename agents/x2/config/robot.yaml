@@ -2,6 +2,7 @@
 
 # ── 机器人连接 ──
 robot:
+  # X2 三计算单元内部网段固定 10.0.1.x（wifi 仅影响外部管理地址，不影响内部互访）
   pc2_host: "10.0.1.41"
   pc3_host: "10.0.1.42"
   pc3_media_path: "/agibot/data/home/agi/media"
@@ -9,7 +10,7 @@ robot:
 # ── 服务 ──
 server:
   host: "0.0.0.0"
-  port: 8000
+  port: 8300
   # 用户数据目录（任务/项目/手机按键/媒体），独立于部署目录，全量部署不清理
   data_dir: "~/ggRobot-data"
 

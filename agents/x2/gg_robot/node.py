@@ -11,6 +11,8 @@ import logging
 import threading
 import math
 import time
+import struct
+import numpy as np
 from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import Any
@@ -28,7 +30,7 @@ from aimdk_msgs.srv import (
     GetStoredMapByName,
 )
 from aimdk_msgs.msg import McLocomotionVelocity, PmuState, MessageHeader, PlayStateChange, JointStateArray, ProcessedAudioOutput
-from sensor_msgs.msg import Imu, CompressedImage
+from sensor_msgs.msg import Imu, CompressedImage, PointCloud2
 from std_msgs.msg import String, Header
 from geometry_msgs.msg import Pose
 from nav_msgs.msg import Odometry
@@ -139,6 +141,12 @@ class X2Node(Node):
         self._play_state_ts: float = 0.0
         self._last_tts_duration_ms: int = 0   # 最近一次 TTS 的预计耗时(毫秒)
 
+        # ── SLAM 建图实时点云（仅建图中处理/推送；见 ws/stream.py cloud_pusher）──
+        self.slam_mapping = False            # routes/slam.py start/stop 置位
+        self._cloud_frame: bytes | None = None   # 打包好的最新帧（pose+int16点）
+        self._cloud_ts: float = 0.0
+        self._cloud_lock = threading.Lock()
+
         # ── 相机帧缓存 ──
         self._camera_frame: bytes | None = None
         self._camera_timestamp: float = 0.0
@@ -184,6 +192,9 @@ class X2Node(Node):
         self.create_subscription(PmuState, "/aima/hal/pmu/state", self._on_battery, qos_profile_sensor_data)
         self.create_subscription(JointStateArray, "/aima/hal/joint/arm/state", self._on_arm, qos_profile_sensor_data)
         self.create_subscription(Imu, "/aima/hal/imu/torso/state", self._on_imu, qos_profile_sensor_data)
+        self.create_subscription(PointCloud2,
+                                 "/aima/hal/sensor/lidar_chest_front/lidar_pointcloud",
+                                 self._on_lidar_cloud, qos_profile_sensor_data)
 
         # ── 订阅音频播放状态（TTS 完成事件）──
         self.create_subscription(PlayStateChange, "/aima/hal/audio/play_state", self._on_play_state, qos_profile_sensor_data)
@@ -486,6 +497,55 @@ class X2Node(Node):
         """
         logger.info("  ⏹ 停止动作（切回站立）")
         self._do_mode("STAND_DEFAULT")
+
+    def _on_lidar_cloud(self, msg: PointCloud2):
+        """建图中：激光帧 → 高度/距离过滤 → 抽稀 → int16(cm) 打包（配当时刻位姿）
+        帧格式（cloud_pusher 再加 4B 时间戳头）：
+          pose_x, pose_y, yaw (3×f32 LE) + n(u16) + n×(x, y int16 LE, 单位 cm，机体系)
+        """
+        if not self.slam_mapping:
+            return
+        try:
+            offsets = {f.name: f.offset for f in msg.fields}
+            if not all(k in offsets for k in ("x", "y", "z")):
+                return
+            step, data = msg.point_step, bytes(msg.data)
+            n = len(data) // step
+            if n == 0:
+                return
+            arr = np.frombuffer(data, dtype=np.uint8, count=n * step).reshape(n, step)
+            ox, oy, oz = offsets["x"], offsets["y"], offsets["z"]
+            x = arr[:, ox:ox + 4].copy().view(np.float32).ravel()
+            y = arr[:, oy:oy + 4].copy().view(np.float32).ravel()
+            z = arr[:, oz:oz + 4].copy().view(np.float32).ravel()
+            # 过滤：高度 -0.1~1.0m（俯视有效层）+ 距离 <15m
+            m = ((z > -0.1) & (z < 1.0)
+                 & (np.abs(x) < 15.0) & (np.abs(y) < 15.0)).nonzero()[0]
+            if m.size == 0:
+                return
+            # 抽稀到 ≤2000 点
+            stride = max(1, m.size // 2000)
+            xs = (x[m][::stride] * 100).astype(np.int16)
+            ys = (y[m][::stride] * 100).astype(np.int16)
+            # 位姿（最近 SLAM 位姿；无位姿时 0）
+            p = self.slam_pose or {}
+            yaw = 0.0
+            qw, qx2, qy2, qz2 = p.get("qw", 1.0), p.get("qx", 0.0), p.get("qy", 0.0), p.get("qz", 0.0)
+            yaw = math.atan2(2 * (qw * qz2 + qx2 * qy2), 1 - 2 * (qy2 * qy2 + qz2 * qz2))
+            payload = struct.pack("<fffHH", p.get("x", 0.0), p.get("y", 0.0), yaw,
+                                  xs.size, 0) + xs.tobytes() + ys.tobytes()
+            with self._cloud_lock:
+                self._cloud_frame = payload
+                self._cloud_ts = time.time()
+        except Exception as e:
+            logger.warning(f"点云打包失败: {e}")
+
+    def get_cloud_frame(self) -> tuple[bytes, float] | None:
+        """最新点云帧（cloud_pusher 消费；返回 None 表示无更新）"""
+        with self._cloud_lock:
+            if self._cloud_frame is None:
+                return None
+            return self._cloud_frame, self._cloud_ts
 
     def get_camera_frame(self) -> bytes | None:
         with self._camera_lock:
