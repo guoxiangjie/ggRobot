@@ -35,7 +35,7 @@ test: test-agent test-e2e
 sidecar-build:
 	cd platform/server && .venv/bin/pip install -q pyinstaller
 	cd platform/server && .venv/bin/pyinstaller --name ggplatform --onedir --noconfirm \
-		--collect-all sqlmodel --collect-all uvicorn --clean \
+		--collect-all sqlmodel --collect-all uvicorn --collect-all sherpa_onnx --collect-all numpy --clean \
 		run.py
 	rm -rf platform/desktop/resources/sidecar
 	mkdir -p platform/desktop/resources/sidecar
