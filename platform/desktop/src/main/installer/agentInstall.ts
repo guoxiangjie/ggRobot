@@ -19,22 +19,31 @@ export interface InstallRequest {
 }
 
 export interface InstallStep {
-  step: 'connect' | 'read-sn' | 'register' | 'stop-legacy' | 'upload-deb' | 'upload-token'
+  step: 'connect' | 'pc3-setup' | 'read-sn' | 'register' | 'stop-legacy' | 'upload-deb' | 'upload-token'
       | 'install' | 'restart' | 'health-poll' | 'done'
   detail?: string
   progress?: number   // 0-1
   error?: string
+  robotId?: string    // 批量更新时的机器路由（装机向导无此字段）
+}
+
+export interface UpdateRequest {
+  host: string
+  username: string
+  password: string
+  debPath: string
+  robotId?: string    // 进度事件路由
 }
 
 export class AgentInstaller extends EventEmitter {
   private aborted = false
 
-  constructor(private win: Electron.WebContents) {
+  constructor(private win: Electron.WebContents, private robotId = '') {
     super()
   }
 
   private emitStep(s: InstallStep): void {
-    if (!this.win.isDestroyed()) this.win.send('install:progress', s)
+    if (!this.win.isDestroyed()) this.win.send('install:progress', { ...s, robotId: this.robotId || undefined })
   }
 
   abort(): void {
@@ -45,6 +54,79 @@ export class AgentInstaller extends EventEmitter {
     // 预探测：agent 已在跑 → 轻量配对（免装 deb，秒级）；否则完整装机
     const existing = await this.probeAgent(req.host)
     return existing ? this.runLight(req, existing) : this.runFull(req)
+  }
+
+  /**Agent 更新（已配对机）：connect → 推 deb → apt install（postinst 自动重启）→ 等恢复 + 版本核对
+   *  不动 SN/token/登记——配对关系保持；apt 原子性保证失败时旧版本仍在跑。 */
+  async runUpdate(req: UpdateRequest): Promise<{ ok: boolean; version?: string; error?: string }> {
+    const wantVer = baseName(req.debPath).match(/_([\d][\w.~-]*?)(?:[-_~][^_]*?)?\.deb$/)?.[1] ?? ''
+    const conn = new Client()
+    try {
+      await this.connect(conn, { ...req, name: '', platformPort: 0 } as InstallRequest)
+      this.emitStep({ step: 'connect', detail: `已连接 ${req.username}@${req.host}` })
+
+      const remoteDeb = `/tmp/${baseName(req.debPath)}`
+      this.emitStep({ step: 'upload-deb', detail: `上传 ${baseName(req.debPath)}`, progress: 0 })
+      await this.upload(conn, req.debPath, remoteDeb, (p) =>
+        this.emitStep({ step: 'upload-deb', progress: p }))
+
+      this.emitStep({ step: 'install', detail: 'apt install（服务自动重启）' })
+      // --allow-downgrades：版本号来自 git describe，历史包编号可能更高；也支持主动回退版本
+      const inst = await this.exec(conn, `sudo -n apt install -y --reinstall --allow-downgrades ${remoteDeb}`, 300_000)
+      if (inst.code !== 0) {
+        throw new Error(`apt install 失败 (exit ${inst.code}): ${inst.err.slice(-500)}`)
+      }
+      conn.end()
+
+      // 等待 agent 重启恢复 + 版本核对（apt 后服务重启约需 5-30s）
+      this.emitStep({ step: 'health-poll', detail: '等待服务重启就绪…' })
+      const t0 = Date.now()
+      for (;;) {
+        if (this.aborted) throw new Error('aborted')
+        const h = await this.probeHealth(req.host)
+        if (h) {
+          const got = h.version ?? ''
+          if (!wantVer || got === wantVer) {
+            this.emitStep({ step: 'health-poll', detail: `已恢复 · agent ${got || '未知版本'}` })
+            this.emitStep({ step: 'done', detail: `更新成功 → ${got || wantVer}` })
+            return { ok: true, version: got }
+          }
+          // 恢复了但版本还是旧的：postinst 可能未重启服务，再给一次重启
+          this.emitStep({ step: 'health-poll', detail: `版本仍为 ${got}，尝试重启服务…` })
+          await this.forceRestart(req)
+          this.emitStep({ step: 'health-poll', detail: '等待服务重启就绪…' })
+        }
+        if (Date.now() - t0 > 120_000) {
+          throw new Error('超时：agent 未恢复（可手动检查机器人 systemd 服务）')
+        }
+        await new Promise((r) => setTimeout(r, 3000))
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      this.emitStep({ step: 'done', error: msg })
+      try { conn.end() } catch { /* */ }
+      return { ok: false, error: msg }
+    }
+  }
+
+  /**health 探测（返回带 version 的完整对象） */
+  private async probeHealth(host: string): Promise<{ sn?: string; version?: string } | null> {
+    try {
+      const r = await fetch(`http://${host}:8300/api/health`, { signal: AbortSignal.timeout(2500) })
+      if (r.ok) return (await r.json()) as { sn?: string; version?: string }
+    } catch { /* */ }
+    return null
+  }
+
+  /**兜底：SSH 重启 user 服务（版本未变时 postinst 可能没触发重启） */
+  private async forceRestart(req: UpdateRequest): Promise<void> {
+    const conn = new Client()
+    try {
+      await this.connect(conn, { ...req, name: '', platformPort: 0 } as InstallRequest)
+      await this.exec(conn,
+        `export XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}; systemctl --user restart ggrobot-agent || true`, 20_000)
+      conn.end()
+    } catch { /* 尽力而为 */ }
   }
 
   /** agent 已安装且存活时的轻量配对：register → SSH 直写 conf → systemctl --user restart */
@@ -105,6 +187,9 @@ export class AgentInstaller extends EventEmitter {
       await this.connect(conn, req)
       this.emitStep({ step: 'connect', detail: `已连接 ${req.username}@${req.host}` })
 
+      // ── 1.5 PC3 免密（新机器人开箱即用媒体上传；已通则跳过）──
+      await this.setupPc3Keyless(conn, req)
+
       // ── 2. SSH 直读 SN（bash -ic 交互模拟：AGIBOT_SN 定义在 .bashrc 交互段，非交互读不到）──
       this.emitStep({ step: 'read-sn', detail: '读取设备 SN' })
       const snOut = await this.exec(conn,
@@ -143,7 +228,7 @@ export class AgentInstaller extends EventEmitter {
 
       // ── 7. 免密安装（postinst: venv+SN烧录+conf+systemd 启动）──
       this.emitStep({ step: 'install', detail: 'apt install（依赖安装 + systemd 注册启动）' })
-      const inst = await this.exec(conn, `sudo -n apt install -y --reinstall ${remoteDeb}`, 300_000)
+      const inst = await this.exec(conn, `sudo -n apt install -y --reinstall --allow-downgrades ${remoteDeb}`, 300_000)
       if (inst.code !== 0) {
         throw new Error(`apt install 失败 (exit ${inst.code}): ${inst.err.slice(-500)}`)
       }
@@ -177,6 +262,54 @@ export class AgentInstaller extends EventEmitter {
       }
     } catch { /* 不在跑 */ }
     return null
+  }
+
+  /**PC2→PC3 免密配置（新机器人开箱即用媒体上传）：
+   *  1. BatchMode 测试已通 → 跳过
+   *  2. 无 key 则生成 ed25519
+   *  3. sshpass 不在则 sudo apt 装（沙盒免密白名单）
+   *  4. sshpass + 装机密码写入公钥到 PC3 → 复验 */
+  private async setupPc3Keyless(conn: Client, req: InstallRequest): Promise<void> {
+    const PC3 = '10.0.1.42'
+    this.emitStep({ step: 'pc3-setup', detail: '检查 PC3 免密…' })
+
+    // 1. 已通？
+    const test = await this.exec(conn,
+      `ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no agi@${PC3} "echo ok" 2>/dev/null`, 8000)
+    if (test.out.trim() === 'ok') {
+      this.emitStep({ step: 'pc3-setup', detail: 'PC3 免密已通，跳过' })
+      return
+    }
+
+    // 2. 确保 key（无则生成）
+    await this.exec(conn,
+      `test -f ~/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -q`, 10000)
+
+    // 3. 确保 sshpass（沙盒 sudo apt 免密）
+    const which = await this.exec(conn, 'command -v sshpass', 5000)
+    if (which.code !== 0) {
+      this.emitStep({ step: 'pc3-setup', detail: '安装 sshpass…' })
+      const apt = await this.exec(conn, 'sudo -n apt install -y sshpass', 120_000)
+      if (apt.code !== 0) {
+        this.emitStep({ step: 'pc3-setup', detail: 'sshpass 安装失败，跳过（媒体上传将不可用）' })
+        return
+      }
+    }
+
+    // 4. 写入公钥（用装机密码认证一次）
+    this.emitStep({ step: 'pc3-setup', detail: '配置 PC3 公钥…' })
+    await this.exec(conn,
+      `sshpass -p '${req.password.replace(/'/g, "'\\''")}' ` +
+      `ssh-copy-id -i ~/.ssh/id_ed25519.pub -o ConnectTimeout=5 -o StrictHostKeyChecking=no agi@${PC3}`, 20000)
+
+    // 5. 复验
+    const verify = await this.exec(conn,
+      `ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no agi@${PC3} "echo ok" 2>/dev/null`, 8000)
+    if (verify.out.trim() === 'ok') {
+      this.emitStep({ step: 'pc3-setup', detail: 'PC3 免密配置完成 ✓' })
+    } else {
+      this.emitStep({ step: 'pc3-setup', detail: 'PC3 免密仍不通（密码不对或 PC3 不可达），媒体上传暂不可用' })
+    }
   }
 
   /** 平台登记换 token（pair/register：upsert by SN） */

@@ -1,0 +1,87 @@
+/**Three.js 场景 — 干净渲染（明/暗主题跟随应用 body[theme-mode]）
+   由 1.0 web/src/components/x2model/SceneSetup.ts 迁移（纯 three 零框架依赖）。
+   展馆版差异：多机场景 → 相机拉远、网格加大、maxDistance 放宽。 */
+
+import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+
+export interface SceneContext {
+  scene: THREE.Scene
+  camera: THREE.PerspectiveCamera
+  renderer: THREE.WebGLRenderer
+  controls: OrbitControls
+  grid: THREE.GridHelper
+}
+
+// 暗/亮主题的 3D 配色（背景 / 环境光 / 网格）。方向光白光为主，明暗通用。
+const DARK = { bg: '#111620', amb: '#8896a9', ambI: 0.8, gridA: '#334155', gridB: '#111620' }
+const LIGHT = { bg: '#e8edf3', amb: '#ffffff', ambI: 0.6, gridA: '#c5cdd9', gridB: '#e8edf3' }
+
+export function isLightTheme(): boolean {
+  return document.body.getAttribute('theme-mode') !== 'dark'
+}
+
+function makeGrid(c: typeof DARK): THREE.GridHelper {
+  const grid = new THREE.GridHelper(12, 40, c.gridA, c.gridB)
+  grid.position.y = -0.85
+  return grid
+}
+
+export function createScene(canvas: HTMLCanvasElement): SceneContext {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false })
+  renderer.setPixelRatio(window.devicePixelRatio)
+  renderer.shadowMap.enabled = true
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.0
+
+  const c = isLightTheme() ? LIGHT : DARK
+  const scene = new THREE.Scene()
+  scene.background = new THREE.Color(c.bg)
+
+  const camera = new THREE.PerspectiveCamera(45, 2, 0.1, 50)
+  camera.position.set(4, 2.2, 4.5)
+  camera.lookAt(0, 0.4, 0)
+
+  scene.add(new THREE.AmbientLight(c.amb, c.ambI))
+
+  const key = new THREE.DirectionalLight('#ffffff', 5.0)
+  key.position.set(2, 4, 3); key.castShadow = true; key.shadow.mapSize.set(1024, 1024)
+  scene.add(key)
+  const fill = new THREE.DirectionalLight('#8cb8e8', 2.5)
+  fill.position.set(-2, 1, 0); scene.add(fill)
+  const rim = new THREE.DirectionalLight('#ffffff', 2.0)
+  rim.position.set(0, 2, -3); scene.add(rim)
+  const under = new THREE.DirectionalLight('#c8d6e5', 0.8)
+  under.position.set(0, -1, 0.5); scene.add(under)
+  const top = new THREE.DirectionalLight('#ffffff', 1.2)
+  top.position.set(0, 3, 0); scene.add(top)
+
+  const grid = makeGrid(c)
+  scene.add(grid)
+
+  const controls = new OrbitControls(camera, renderer.domElement)
+  controls.target.set(0, 0.35, 0)
+  controls.enableDamping = true; controls.dampingFactor = 0.08
+  controls.minDistance = 0.8; controls.maxDistance = 12
+  controls.maxPolarAngle = Math.PI * 0.7
+  controls.update()
+
+  return { scene, camera, renderer, controls, grid }
+}
+
+/**主题切换：改背景 + 环境光 + 重建网格（模型不动，无重载闪烁） */
+export function applyTheme(ctx: SceneContext, light: boolean): void {
+  const c = light ? LIGHT : DARK
+  ctx.scene.background = new THREE.Color(c.bg)
+  for (const child of ctx.scene.children) {
+    if (child instanceof THREE.AmbientLight) {
+      child.color.set(c.amb)
+      child.intensity = c.ambI
+    }
+  }
+  ctx.scene.remove(ctx.grid)
+  ctx.grid.geometry?.dispose()
+  const grid = makeGrid(c)
+  ctx.scene.add(grid)
+  ctx.grid = grid
+}

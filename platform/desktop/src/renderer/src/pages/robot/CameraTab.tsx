@@ -1,16 +1,17 @@
 /**相机页 — WS 订阅 cam.* 二进制帧（4B ts + JPEG → Blob → objectURL，换帧 revoke）+ 相机切换*/
 
 import { useEffect, useRef, useState } from 'react'
-import { Card, Tag, Typography, Button } from '@douyinfe/semi-ui'
-import { Camera as CamIcon } from 'lucide-react'
+import { Card, Tag, Button } from '@douyinfe/semi-ui'
+import { Camera as CamIcon, CameraIcon } from 'lucide-react'
 import { AgentWsClient } from '@/api/agentWs'
 import { agentWsUrl, makeAgentClient } from '@/api/agent'
 import { useRobot } from './RobotLayout'
+import { toast } from '@/api/toast'
 
 interface CamItem { id: string; label: string; topic: string; active?: boolean; selected?: boolean }
 
 export default function CameraTab(): JSX.Element {
-  const { ip, token, capsOf } = useRobot()
+  const { ip, token, name, capsOf } = useRobot()
   const http = useRef(makeAgentClient(ip, token)).current
 
   const contractCams = ((capsOf('perception.camera')?.params.cameras ?? []) as CamItem[])
@@ -20,6 +21,7 @@ export default function CameraTab(): JSX.Element {
   const [imgUrl, setImgUrl] = useState('')
   const [fps, setFps] = useState(0)
   const urlRef = useRef('')
+  const lastBlobRef = useRef<Blob | null>(null)
 
   // 实时相机列表（agent 权威）
   useEffect(() => {
@@ -38,6 +40,7 @@ export default function CameraTab(): JSX.Element {
   useEffect(() => {
     const c = new AgentWsClient(agentWsUrl(ip, token), {
       onFrame: (blob) => {
+        lastBlobRef.current = blob
         const url = URL.createObjectURL(blob)
         if (urlRef.current) URL.revokeObjectURL(urlRef.current)   // 换帧 revoke 防泄漏
         urlRef.current = url
@@ -58,6 +61,18 @@ export default function CameraTab(): JSX.Element {
     }
   }, [ip, token])
 
+  /**拍照：当前帧存为 JPEG（路径在设置-通用可自定义，默认 ~/Pictures/ggRobot） */
+  async function snapshot(): Promise<void> {
+    const blob = lastBlobRef.current
+    if (!blob) { toast.warning('还没有画面'); return }
+    try {
+      const buf = await blob.arrayBuffer()
+      const cam = cams.find((c) => c.id === selected)
+      const full = await window.desktop.savePhoto(buf, `${name}_${cam?.id || 'cam'}`)
+      toast.success(`已保存：${full}`, 5)
+    } catch { toast.error('拍照失败') }
+  }
+
   async function switchCam(id: string): Promise<void> {
     setSelected(id)
     setImgUrl('')   // 切换清帧
@@ -71,6 +86,8 @@ export default function CameraTab(): JSX.Element {
       title={<span><CamIcon size={15} style={{ verticalAlign: -2, marginRight: 6 }} />相机流</span>}
       headerExtraContent={
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Button size="small" icon={<CameraIcon size={13} />} disabled={!imgUrl}
+            onClick={() => void snapshot()}>拍照</Button>
           {fps > 0 && <Tag size="small" color="green" shape="circle">{fps} fps</Tag>}
           {cams.map((c) => (
             <Button key={c.id} size="small" theme={c.id === selected ? 'solid' : 'borderless'}
@@ -91,9 +108,6 @@ export default function CameraTab(): JSX.Element {
           </span>
         )}
       </div>
-      <Typography.Text type="tertiary" size="small" style={{ marginTop: 8, display: 'block' }}>
-        二进制 JPEG 流（~10fps）· 订阅 cam.* wildcard
-      </Typography.Text>
     </Card>
   )
 }

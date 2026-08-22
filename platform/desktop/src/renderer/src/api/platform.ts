@@ -23,6 +23,7 @@ export interface RobotRecord {
   name: string
   model: string
   status: 'pending' | 'active'
+  agent_version?: string
   last_ip: string
   last_seen: string | null
   token: string
@@ -100,6 +101,37 @@ export interface ChoreoStepType {
   fields: ChoreoStepField[]
 }
 
+// ── 三方能力（可配置 HTTP 调用，编排步骤/事件钩子复用）──
+export interface ThirdApiDef {
+  id: string
+  name: string
+  desc: string
+  method: string
+  url: string
+  headers: { key: string; value: string }[]
+  body: string
+  params: { key: string; label: string; default: string }[]
+  timeout: number
+}
+
+// ── 自由控制项（即点即执行；TTS + 可选动作组合，语音动作并行下发）──
+export interface FreeAction {
+  kind: 'motion' | 'linkcraft'
+  motion_id?: string
+  area?: number
+  resource_key?: string
+  version?: string
+  resource_type?: string
+}
+export interface FreeItem {
+  id: string
+  label: string
+  robot_id: string
+  tts: string
+  action: FreeAction | null
+  sort: number
+}
+
 export const api = {
   listRobots: async (refresh = false): Promise<RobotRecord[]> => {
     const { data } = await platformApi().get(`/api/robots`, { params: refresh ? { refresh: 1 } : {} })
@@ -159,6 +191,38 @@ export const api = {
   choreoRuns: async (): Promise<ChoreoRun[]> => {
     const { data } = await platformApi().get(`/api/choreo/runs`)
     return data.runs
+  },
+  // ── 三方能力 ──
+  listThirdApis: async (): Promise<ThirdApiDef[]> => {
+    const { data } = await platformApi().get('/api/third')
+    return data.apis
+  },
+  saveThirdApi: async (a: { id?: string; name: string; desc: string; method: string; url: string; headers: { key: string; value: string }[]; body: string; params: { key: string; label: string; default: string }[]; timeout: number }): Promise<ThirdApiDef> => {
+    const { data } = a.id
+      ? await platformApi().patch(`/api/third/${a.id}`, a)
+      : await platformApi().post('/api/third', a)
+    return data
+  },
+  deleteThirdApi: async (id: string): Promise<void> => {
+    await platformApi().delete(`/api/third/${id}`)
+  },
+  testThirdApi: async (a: { api_id?: string; method?: string; url?: string; headers?: { key: string; value: string }[]; body?: string; args: Record<string, string>; timeout?: number }): Promise<{ ok: boolean; status: number; text: string }> => {
+    const { data } = await platformApi().post('/api/third/test', a, { timeout: 35000 })
+    return data
+  },
+  // ── 自由控制项 ──
+  listFreeItems: async (): Promise<FreeItem[]> => {
+    const { data } = await platformApi().get('/api/free-items')
+    return data.items
+  },
+  saveFreeItem: async (item: { id?: string; label: string; robot_id: string; tts: string; action: FreeAction | null }): Promise<FreeItem> => {
+    const { data } = item.id
+      ? await platformApi().patch(`/api/free-items/${item.id}`, item)
+      : await platformApi().post('/api/free-items', item)
+    return data
+  },
+  deleteFreeItem: async (id: string): Promise<void> => {
+    await platformApi().delete(`/api/free-items/${id}`)
   },
 }
 

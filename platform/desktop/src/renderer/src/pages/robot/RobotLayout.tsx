@@ -1,9 +1,8 @@
 /**单机器人详情容器 — 拉登记信息(ip/token) + 能力契约 + tab 导航（Dashboard/控制/相机）*/
 
 import { useEffect, useState, useMemo, createContext, useContext } from 'react'
-import { useParams, useNavigate, NavLink, Outlet } from 'react-router-dom'
+import { useParams, NavLink, Outlet } from 'react-router-dom'
 import { Card, Tag, Typography, Spin, Empty } from '@douyinfe/semi-ui'
-import { ArrowLeft } from 'lucide-react'
 import { platformApi } from '@/api/platform'
 import { makeAgentClient, type Capabilities } from '@/api/agent'
 
@@ -24,7 +23,6 @@ export function useRobot(): RobotCtx {
 
 export default function RobotLayout(): JSX.Element {
   const { id } = useParams<{ id: string }>()
-  const nav = useNavigate()
   const [info, setInfo] = useState<{ ip: string; token: string; name: string } | null>(null)
   const [caps, setCaps] = useState<Capabilities | null>(null)
   const [error, setError] = useState('')
@@ -56,25 +54,15 @@ export default function RobotLayout(): JSX.Element {
   }), [info, caps])
 
   if (error) {
-    return (
-      <div className="page">
-        <Empty title="无法打开" description={error} style={{ padding: 60 }} />
-        <div style={{ textAlign: 'center' }}>
-          <a onClick={() => nav('/robots')} style={{ cursor: 'pointer' }}>返回列表</a>
-        </div>
-      </div>
-    )
+    return <Empty title="无法打开" description={error} style={{ padding: 60 }} />
   }
   if (!ctx) return <div style={{ padding: 80, textAlign: 'center' }}><Spin size="large" /></div>
 
   const online = caps != null
   return (
     <Ctx.Provider value={ctx}>
-      <div className="page">
+      <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <button className="nav-item" style={{ width: 34, height: 34 }} onClick={() => nav('/')}>
-            <ArrowLeft size={17} />
-          </button>
           <h1 className="page-title" style={{ marginBottom: 0 }}>{info!.name}</h1>
           <Tag size="small" color={online ? 'green' : 'grey'} shape="circle">
             {online ? '在线' : '离线'}
@@ -94,6 +82,11 @@ export default function RobotLayout(): JSX.Element {
             { to: 'dashboard', label: '仪表盘' },
             { to: 'control', label: '控制' },
             { to: 'camera', label: '相机' },
+            { to: 'voice', label: '语音' },
+            { to: 'emoji', label: '表情' },
+            { to: 'media', label: '媒体' },
+            { to: 'linkcraft', label: '灵创' },
+            { to: 'system', label: '系统' },
           ].map((t) => (
             <NavLink key={t.to} to={t.to}
               className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>

@@ -1,9 +1,10 @@
-/**添加机器人（装机向导）— 表单 → SSH 推装（一键到底）→ 完成*/
+import { toast } from '@/api/toast'
+/**添加机器人（装机向导独立窗口页，#/add-robot）— 表单 → SSH 推装（一键到底）→ 完成
+   agent 已运行时自动走快速配对（无需 deb）。装机中途关窗自动 abort。*/
 
-import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Card, Button, Input, Typography, Steps, Progress, Toast, Banner } from '@douyinfe/semi-ui'
-import { PackagePlus, ArrowLeft } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Button, Input, Typography, Steps, Progress, Banner } from '@douyinfe/semi-ui'
+import { PackagePlus } from 'lucide-react'
 import { useAppStore } from '@/stores/app'
 import type { InstallProgress } from '../../../preload/index'
 
@@ -20,13 +21,10 @@ const STEP_DEFS: { key: string; label: string }[] = [
   { key: 'done', label: '完成' },
 ]
 
-export default function AddRobot(): JSX.Element {
-  const nav = useNavigate()
+export default function AddRobotPage(): JSX.Element {
   const { port } = useAppStore()
-  const [searchParams] = useSearchParams()
 
-  // 从扫描弹窗跳转时预填 IP（HashRouter 的 query 需用 useSearchParams 解析）
-  const [host, setHost] = useState(searchParams.get('ip') ?? '10.10.4.175')
+  const [host, setHost] = useState('10.10.4.175')
   const [username, setUsername] = useState('agi')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -35,6 +33,7 @@ export default function AddRobot(): JSX.Element {
   const [running, setRunning] = useState(false)
   const [steps, setSteps] = useState<Record<string, InstallProgress>>({})
   const [done, setDone] = useState<'ok' | 'fail' | null>(null)
+  const jobIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!window.desktop) return
@@ -45,82 +44,83 @@ export default function AddRobot(): JSX.Element {
         setDone(p.error ? 'fail' : 'ok')
       }
     })
+}, [])
+
+  // 装机中途关窗（红绿灯）→ 中止 SSH 任务，不留孤儿 job
+  useEffect(() => () => {
+    if (jobIdRef.current) window.desktop?.installAbort(jobIdRef.current)
   }, [])
 
   async function start(): Promise<void> {
-    if (!password) { Toast.warning('请输入 SSH 密码') ; return }
-    // deb 仅完整装机需要（检测到 agent 已运行时自动走快速配对，无需 deb）
-    const dp = debPath || ''
-
+    if (!password) { toast.warning('请输入 SSH 密码') ; return }
+    const dp = debPath || ''   // agent 已在跑时快速配对无需 deb
     setRunning(true)
     setDone(null)
     setSteps({})
-    await window.desktop.installAgent({
+    const { jobId } = await window.desktop.installAgent({
       host, username, password, debPath: dp, name, platformPort: port,
     })
+    jobIdRef.current = jobId
   }
 
   const errStep = Object.values(steps).find((s) => s.error)
 
   return (
-    <div className="page" style={{ maxWidth: 720 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <Button icon={<ArrowLeft size={14} />} theme="borderless" onClick={() => nav('/robots')} />
+    <div>
+      {/* 自绘标题条（drag 区，红绿灯落左侧留白）；主题暗色适配复用 .titlebar 规则 */}
+      <div className="titlebar" style={{ paddingLeft: 84 }}>
+        <span className="title">添加机器人（装机向导）</span>
+      </div>
+      <div style={{ padding: '20px 32px 28px', maxWidth: 720, margin: '0 auto' }}>
+      <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 16 }}>
+        一键装机：SSH 推 deb → 免密 apt 安装 → systemd 常驻 → 自动配对；机器人上已有 agent 时自动走快速配对（秒级）
+      </Typography.Text>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
-          <h1 className="page-title">添加机器人</h1>
-          <p className="page-sub" style={{ marginBottom: 0 }}>
-            一键装机：SSH 推 deb → 免密 apt 安装 → systemd 常驻 → 自动配对
-          </p>
+          <Typography.Text type="tertiary" size="small">机器人 IP</Typography.Text>
+          <Input value={host} onChange={setHost} placeholder="10.10.4.175" />
+        </div>
+        <div>
+          <Typography.Text type="tertiary" size="small">SSH 用户名</Typography.Text>
+          <Input value={username} onChange={setUsername} placeholder="agi" />
+        </div>
+        <div>
+          <Typography.Text type="tertiary" size="small">SSH 密码</Typography.Text>
+          <Input mode="password" value={password} onChange={setPassword} placeholder="agi 账号密码" />
+        </div>
+        <div>
+          <Typography.Text type="tertiary" size="small">别名（可选）</Typography.Text>
+          <Input value={name} onChange={setName} placeholder="实验室 X2-1号" />
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <Typography.Text type="tertiary" size="small">deb 安装包（首次装机需要；快速配对可留空）</Typography.Text>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Input value={debPath} onChange={setDebPath}
+              placeholder="agents/x2/packaging/build/ggrobot-agent_*.deb" />
+            <Button disabled={!window.desktop} icon={<PackagePlus size={14} />}
+              onClick={async () => {
+                const p = await window.desktop.pickDeb()
+                if (p) setDebPath(p)
+              }}>选择</Button>
+          </div>
         </div>
       </div>
 
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <div>
-            <Typography.Text type="tertiary" size="small">机器人 IP</Typography.Text>
-            <Input value={host} onChange={setHost} placeholder="10.10.4.175" />
-          </div>
-          <div>
-            <Typography.Text type="tertiary" size="small">SSH 用户名</Typography.Text>
-            <Input value={username} onChange={setUsername} placeholder="agi" />
-          </div>
-          <div>
-            <Typography.Text type="tertiary" size="small">SSH 密码</Typography.Text>
-            <Input mode="password" value={password} onChange={setPassword} placeholder="agi 账号密码" />
-          </div>
-          <div>
-            <Typography.Text type="tertiary" size="small">别名（可选）</Typography.Text>
-            <Input value={name} onChange={setName} placeholder="实验室 X2-1号" />
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <Typography.Text type="tertiary" size="small">deb 安装包（make agent-deb 产物）</Typography.Text>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Input value={debPath} onChange={setDebPath}
-                placeholder="agents/x2/packaging/build/ggrobot-agent_*.deb" />
-              <Button disabled={!window.desktop} icon={<PackagePlus size={14} />}
-                onClick={async () => {
-                  const p = await window.desktop.pickDeb()
-                  if (p) setDebPath(p)
-                }}>选择</Button>
-            </div>
-          </div>
-        </div>
-        <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
-          <Button theme="solid" size="large" loading={running} onClick={() => void start()}>
-            开始装机
-          </Button>
-          {done === 'ok' && (
-            <Button size="large" onClick={() => nav('/')}>去总览看看</Button>
-          )}
-        </div>
-      </Card>
+      <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
+        <Button theme="solid" size="large" loading={running} onClick={() => void start()}>
+          开始装机
+        </Button>
+        {done === 'ok' && (
+          <Button size="large" onClick={() => window.close()}>完成</Button>
+        )}
+      </div>
 
       {(running || done) && (
-        <Card>
-          <Steps direction="vertical" size="small" style={{ maxHeight: 420, overflow: 'auto' }}>
+        <div style={{ marginTop: 14, maxHeight: 360, overflow: 'auto' }}>
+          <Steps direction="vertical" size="small">
             {STEP_DEFS.filter((d) => steps[d.key]).map((d, i, arr) => {
               const s = steps[d.key]
-              // 只显示已发生的步骤；最后一步进行中（done 除外）
               const status: 'finish' | 'error' | 'process' =
                 s.error ? 'error'
                   : i === arr.length - 1 && d.key !== 'done' ? 'process'
@@ -144,18 +144,19 @@ export default function AddRobot(): JSX.Element {
           {steps['upload-deb']?.progress != null && steps['upload-deb'].progress < 1 && (
             <Progress percent={Math.round(steps['upload-deb'].progress * 100)} style={{ marginTop: 8 }} />
           )}
-        </Card>
+        </div>
       )}
 
       {done === 'ok' && (
         <Banner type="success" closeIcon={null} style={{ marginTop: 12 }}
-          description="装机完成，机器人已自动配对（hub 最长 5s 后点亮在线状态）" />
+          description="装机完成，机器人已自动配对（总览 5 秒内点亮在线）" />
       )}
       {done === 'fail' && (
         <Banner type="danger" closeIcon={null} style={{ marginTop: 12 }}
           description={<>装机失败：{errStep?.error ?? '未知错误'}<br />
-            可检查：机器人可达性 / SSH 密码 / deb 路径；失败可重试（幂等，token 不会被覆盖）</>} />
+            可检查：机器人可达性 / SSH 密码 / deb 路径；失败可重试（幂等）</>} />
       )}
+      </div>
     </div>
   )
 }

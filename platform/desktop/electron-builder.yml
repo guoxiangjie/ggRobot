@@ -1,5 +1,6 @@
 appId: com.ggrobot.platform
-productName: GG Robot
+productName: 机器人集群控制系统
+electronLanguages: [zh-CN]   # 系统级 UI（对话框/菜单基线）走中文
 npmRebuild: false   # ssh2 用纯 JS fallback（cpu-features 原生编译失败不阻塞）
 directories:
   output: release/${version}

@@ -1,11 +1,13 @@
+import { toast } from '@/api/toast'
 /**机器人管理 — 列表/改名/删除/网段扫描 + 弹窗内直接配对*/
 
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Tag, Button, Table, Modal, Toast, Input, Typography, Banner } from '@douyinfe/semi-ui'
-import { Plus, RefreshCw, ScanSearch, Trash2, Pencil } from 'lucide-react'
+import { Tag, Button, Table, Modal, Input, Typography, Banner } from '@douyinfe/semi-ui'
+import { Plus, RefreshCw, ScanSearch, Trash2, Pencil, UploadCloud } from 'lucide-react'
 import { api, type RobotRecord } from '@/api/platform'
 import { useAppStore } from '@/stores/app'
+import { useRobotsStore } from '@/stores/robots'
+import UpdateAgents from '@/pages/UpdateAgents'
 import type { InstallProgress } from '../../../preload/index'
 
 interface ScanHit {
@@ -14,14 +16,14 @@ interface ScanHit {
 }
 
 export default function RobotList(): JSX.Element {
-  const nav = useNavigate()
   const { port } = useAppStore()
+  const summaries = useRobotsStore((s) => s.summaries)   // hub 实时流（5s 聚合）
   const [robots, setRobots] = useState<RobotRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [scanOpen, setScanOpen] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanHits, setScanHits] = useState<ScanHit[]>([])
-  const [subnet, setSubnet] = useState('10.10.4')
+  const [subnet, setSubnet] = useState(localStorage.getItem('gg-scan-subnet') || '10.10.4')
 
   // ── 弹窗内直接配对（轻配对：agent 已在跑，写 token + 重启服务）──
   const [pairTarget, setPairTarget] = useState<ScanHit | null>(null)
@@ -31,12 +33,16 @@ export default function RobotList(): JSX.Element {
   const [pairRunning, setPairRunning] = useState(false)
   const [pairProgress, setPairProgress] = useState<InstallProgress | null>(null)
 
+  // ── Agent 批量更新 ──
+  const [selected, setSelected] = useState<RobotRecord[]>([])
+  const [updTargets, setUpdTargets] = useState<RobotRecord[] | null>(null)
+
   const load = useCallback(async (refresh = false) => {
     setLoading(true)
     try {
       setRobots(await api.listRobots(refresh))
     } catch {
-      Toast.error('平台服务不可达')
+      toast.error('平台服务不可达')
     }
     setLoading(false)
   }, [])
@@ -46,11 +52,12 @@ export default function RobotList(): JSX.Element {
   useEffect(() => {
     if (!window.desktop) return
     return window.desktop.onInstallProgress((p) => {
+      if (p.robotId) return   // 带 robotId 的是批量更新事件，归 UpdateAgents 组件管
       if (p.step !== 'done') { setPairProgress(p); return }
       setPairRunning(false)
       setPairProgress(p)
       if (!p.error) {
-        Toast.success('配对成功')
+        toast.success('配对成功')
         setPairTarget(null)
         void load(true)
       }
@@ -59,7 +66,7 @@ export default function RobotList(): JSX.Element {
 
   async function doPair(): Promise<void> {
     if (!pairTarget) return
-    if (!pairPass) { Toast.warning('请输入 SSH 密码') ; return }
+    if (!pairPass) { toast.warning('请输入 SSH 密码') ; return }
     setPairRunning(true)
     setPairProgress(null)
     await window.desktop.installAgent({
@@ -73,7 +80,7 @@ export default function RobotList(): JSX.Element {
     try {
       setScanHits((await api.scanSubnet(subnet)) as ScanHit[])
     } catch {
-      Toast.error('扫描失败')
+      toast.error('扫描失败')
     }
     setScanning(false)
   }
@@ -100,7 +107,7 @@ export default function RobotList(): JSX.Element {
       okType: 'danger',
       onOk: async () => {
         await api.deleteRobot(rb.id)
-        Toast.success('已移除')
+        toast.success('已移除')
         void load()
       },
     })
@@ -118,7 +125,11 @@ export default function RobotList(): JSX.Element {
         <Button icon={<ScanSearch size={14} />} onClick={() => { setScanOpen(true); void doScan() }}>
           扫描网段
         </Button>
-        <Button theme="solid" icon={<Plus size={14} />} onClick={() => nav('/robots/add')}>
+        <Button icon={<UploadCloud size={14} />} disabled={selected.length === 0}
+          onClick={() => setUpdTargets(selected)}>
+          批量更新{selected.length > 0 ? `（${selected.length}）` : ''}
+        </Button>
+        <Button theme="solid" icon={<Plus size={14} />} onClick={() => void window.desktop?.openAddRobot()}>
           添加机器人
         </Button>
       </div>
@@ -128,6 +139,9 @@ export default function RobotList(): JSX.Element {
         dataSource={robots}
         empty="暂无机器人 — 点右上「添加机器人」装第一台"
         pagination={false}
+        rowSelection={{
+          onChange: (_keys, rows) => setSelected(rows ?? []),
+        }}
         columns={[
           {
             title: '名称', dataIndex: 'name',
@@ -143,9 +157,19 @@ export default function RobotList(): JSX.Element {
           { title: 'SN', dataIndex: 'sn', render: (v: string) => <code style={{ fontSize: 12 }}>{v}</code> },
           { title: 'IP', dataIndex: 'last_ip' },
           {
+            title: 'Agent',
+            render: (_v, rb) => {
+              const s = summaries.find((x) => x.id === rb.id) ?? rb.summary
+              const v = s?.version || rb.agent_version
+              return v ? <code style={{ fontSize: 12 }}>v{v}</code>
+                : <Typography.Text type="tertiary" size="small">—</Typography.Text>
+            },
+          },
+          {
             title: '状态',
             render: (_v, rb) => {
-              const s = rb.summary
+              // 优先取 hub 实时摘要（5s 自动刷新），回落到拉取时的快照
+              const s = summaries.find((x) => x.id === rb.id) ?? rb.summary
               return (
                 <div style={{ display: 'flex', gap: 6 }}>
                   <Tag size="small" color={s?.online ? 'green' : 'grey'} shape="circle">
@@ -158,9 +182,12 @@ export default function RobotList(): JSX.Element {
             },
           },
           {
-            title: '', width: 120,
+            title: '', width: 150,
             render: (_v, rb) => (
               <div style={{ display: 'flex', gap: 4 }}>
+                <Button size="small" theme="borderless" icon={<UploadCloud size={13} />}
+                  disabled={!rb.last_ip} title="更新 Agent"
+                  onClick={() => setUpdTargets([rb])} />
                 <Button size="small" theme="borderless" icon={<Pencil size={13} />}
                   onClick={() => rename(rb)} />
                 <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />}
@@ -184,6 +211,7 @@ export default function RobotList(): JSX.Element {
             重新扫描
           </Button>
         </div>
+        <div style={{ paddingBottom: 16 }}>   {/* 弹窗底部间歇 */}
         {scanHits.length === 0 && !scanning && <Typography.Text type="tertiary">未发现 agent</Typography.Text>}
         {scanHits.map((h) => (
           <div key={h.ip} style={{
@@ -207,6 +235,7 @@ export default function RobotList(): JSX.Element {
             )}
           </div>
         ))}
+        </div>
 
         {/* 弹窗内直接配对（agent 已在跑 → 快速配对，无需 deb） */}
         <Modal
@@ -239,6 +268,12 @@ export default function RobotList(): JSX.Element {
           )}
         </Modal>
       </Modal>
+
+      {/* Agent 批量更新 */}
+      {updTargets && updTargets.length > 0 && (
+        <UpdateAgents targets={updTargets} onClose={() => setUpdTargets(null)}
+          onDone={() => { void load(true) }} />
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import pkg from './package.json'
 
 export default defineConfig({
   main: {
@@ -22,11 +23,12 @@ export default defineConfig({
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
     plugins: [react()],
+    define: {
+      __version__: JSON.stringify(pkg.version),
+    },
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src/renderer/src'),
-        // Semi 的 package.json exports 未映射 css 子路径，alias 直指文件绕过
-        'semi-theme-css': resolve(__dirname, 'node_modules/@douyinfe/semi-ui/dist/css/semi.min.css'),
       },
     },
     build: {

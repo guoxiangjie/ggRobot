@@ -88,7 +88,7 @@ export default function DashboardTab(): JSX.Element {
                   <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, position: 'relative' }}>
                     {/* 位置条：-π..π 归一化 */}
                     <div style={{
-                      position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, background: '#4da6ff',
+                      position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, background: 'var(--gg-accent)',
                       transform: `translateX(${Math.max(-50, Math.min(50, (a.position / Math.PI) * 50)) * 1 - 0}px)`,
                       marginLeft: `${Math.max(-50, Math.min(50, (a.position / Math.PI) * 50))}%`,
                     }} />

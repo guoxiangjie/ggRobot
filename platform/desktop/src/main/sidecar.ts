@@ -41,9 +41,10 @@ function spawnOnce(port: number): ChildProcess {
   let args: string[]
   let cwd: string
   if (is.dev) {
-    const serverRoot = path.resolve(app.getAppPath(), '../../server')
+    // dev 从 platform/desktop 跑（pnpm dev），server 在兄弟目录；用 cwd 推导稳定
+    const serverRoot = path.resolve(process.cwd(), '../server')
     const venvPy = path.resolve(serverRoot, '.venv/bin/python')
-    file = fs.existsSync(venvPy) ? venvPy : 'python3'
+    file = fs.existsSync(venvPy) ? venvPy : '/usr/bin/python3'
     args = ['-m', 'ggplatform']
     cwd = serverRoot
   } else {

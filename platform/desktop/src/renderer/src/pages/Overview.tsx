@@ -2,7 +2,7 @@
 
 import { useNavigate } from 'react-router-dom'
 import { Card, Tag, Progress, Button } from '@douyinfe/semi-ui'
-import { Bot, ScanSearch, Plus, ArrowRight } from 'lucide-react'
+import { Bot, ScanSearch, Plus, ArrowRight, BatteryCharging } from 'lucide-react'
 import { useRobotsStore } from '@/stores/robots'
 import { useAppStore } from '@/stores/app'
 import { EmptyBox } from '@/components/StateViews'
@@ -56,9 +56,9 @@ export default function Overview(): JSX.Element {
                   <div style={{
                     width: 38, height: 38, borderRadius: 10, display: 'flex',
                     alignItems: 'center', justifyContent: 'center',
-                    background: r.online ? 'rgba(60,201,142,0.14)' : 'var(--semi-color-fill-1)',
+                    background: 'var(--semi-color-primary-light-default)',
                   }}>
-                    <Bot size={20} color={r.online ? 'var(--gg-success)' : 'var(--semi-color-text-2)'} />
+                    <Bot size={20} color="var(--semi-color-primary)" />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{r.name}</div>
@@ -71,20 +71,31 @@ export default function Overview(): JSX.Element {
 
                 {r.battery_soc != null && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <BatteryCharging size={15}
+                      color={r.battery_soc > 30 ? '#3fb950' : '#f93920'} />
                     <Progress percent={r.battery_soc} showInfo={false}
-                      stroke={r.battery_soc > 30 ? 'var(--gg-success)' : 'var(--gg-danger)'}
+                      stroke={r.battery_soc > 30 ? '#3fb950' : '#f93920'}
                       style={{ flex: 1, margin: 0 }} />
-                    <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>{r.battery_soc}%</span>
+                    <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)', width: 34, textAlign: 'right' }}>
+                      {r.battery_soc}%
+                    </span>
                   </div>
                 )}
 
                 <div style={{ marginTop: 10, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <Tag size="small" color={r.online ? 'green' : 'grey'} shape="circle">
+                  <Tag size="small" color={r.online ? 'green' : 'grey'} shape="circle" style={{ flexShrink: 0 }}>
                     {r.online ? '在线' : '离线'}
                   </Tag>
-                  {r.status === 'pending' && <Tag size="small" color="orange" shape="circle">装机中</Tag>}
-                  {r.token_ok && <Tag size="small" color="blue" shape="circle">已配对</Tag>}
-                  {r.version && <Tag size="small" shape="circle">v{r.version}</Tag>}
+                  {r.status === 'pending' && <Tag size="small" color="orange" shape="circle" style={{ flexShrink: 0 }}>装机中</Tag>}
+                  {r.token_ok && <Tag size="small" color="blue" shape="circle" style={{ flexShrink: 0 }}>已配对</Tag>}
+                  {/* 版本号可能很长（git describe）——只截它（flexShrink 默认 1，收缩全落这里） */}
+                  {r.version && (
+                    <Tag size="small" shape="circle" style={{
+                      maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      <span title={`v${r.version}`}>v{r.version}</span>
+                    </Tag>
+                  )}
                   <div style={{ flex: 1 }} />
                   <ArrowRight size={14} color="var(--semi-color-text-2)" />
                 </div>

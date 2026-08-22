@@ -1,3 +1,4 @@
+import { toast } from '@/api/toast'
 /**控制页 — 动作网格 + TTS + 模式组 + 键盘/摇杆遥控
 
 遥控铁律（照搬 1.0 实测）：50ms(20Hz) interval 发送；停止必发全零 (0,0,0)；
@@ -6,7 +7,7 @@
 */
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Card, Button, Input, Tag, Typography, Toast, Switch, Modal } from '@douyinfe/semi-ui'
+import { Card, Button, Input, Tag, Typography, Switch, Modal } from '@douyinfe/semi-ui'
 import { Gamepad2, Mic, Play, PersonStanding, Square } from 'lucide-react'
 import nipplejs from 'nipplejs'
 import { AgentWsClient } from '@/api/agentWs'
@@ -19,6 +20,9 @@ interface Gear { id: string; name: string; forward: number; lateral: number; ang
 
 const KEYMAP: Record<string, 'fwd+' | 'fwd-' | 'lat-' | 'lat+' | 'ang+' | 'ang-'> = {
   w: 'fwd+', s: 'fwd-', a: 'lat-', d: 'lat+', q: 'ang+', e: 'ang-',
+}
+const KEY_HINT: Record<string, string> = {
+  w: '前进', s: '后退', a: '左移', d: '右移', q: '左转', e: '右转',
 }
 
 export default function ControlTab(): JSX.Element {
@@ -61,24 +65,34 @@ export default function ControlTab(): JSX.Element {
           setMotorOn(false)
         }
       },
-      onSessionLost: () => Toast.warning('控制权已被其他客户端接管'),
+      onSessionLost: () => toast.warning('控制权已被其他客户端接管'),
     })
     wsRef.current = c
     c.connect()
     return () => { stopMotor(); c.close() }
   }, [ip, token, stopMotor])
 
-  // ── 键盘 ──
+  // ── 键盘 ──（keys ref 供 20Hz 循环；pressed state 驱动键位指示 UI）
+  const [pressed, setPressed] = useState<Set<string>>(new Set())
   useEffect(() => {
+    const sync = (): void => setPressed(new Set(keys.current))
     const down = (e: KeyboardEvent): void => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const k = KEYMAP[e.key.toLowerCase()]
-      if (k) { keys.current.add(e.key.toLowerCase()); e.preventDefault() }
+      if (k) {
+        keys.current.add(e.key.toLowerCase()); e.preventDefault()
+        sync()
+      }
     }
-    const up = (e: KeyboardEvent): void => { keys.current.delete(e.key.toLowerCase()) }
+    const up = (e: KeyboardEvent): void => {
+      if (keys.current.delete(e.key.toLowerCase())) sync()
+    }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
   }, [])
 
   // ── 20Hz 发送循环 ──
@@ -115,7 +129,7 @@ export default function ControlTab(): JSX.Element {
     if (!joyZone.current) return
     const joy = nipplejs.create({
       zone: joyZone.current, mode: 'static', position: { left: '50%', top: '50%' },
-      color: '#4da6ff', size: 120,
+      color: '#4da6ff', size: 120,   // nipplejs 需解析色值生成透明变体，不能用 CSS 变量
     })
     joy.on('move', (_e, d) => { joyVec.current = d.vector })
     joy.on('end', () => { joyVec.current = { x: 0, y: 0 } })
@@ -129,10 +143,10 @@ export default function ControlTab(): JSX.Element {
       Modal.confirm({
         title: '机器人正被其他客户端控制',
         content: `当前控制者：${who}。要接管控制权吗？`,
-        onOk: async () => { await http.post('/api/session/takeover?client_id=takeover&name=') ; Toast.success('已接管') },
+        onOk: async () => { await http.post('/api/session/takeover?client_id=takeover&name=') ; toast.success('已接管') },
       })
     } else {
-      Toast.error('指令失败')
+      toast.error('指令失败')
     }
   }, [http])
 
@@ -143,7 +157,7 @@ export default function ControlTab(): JSX.Element {
     setPlayingKey(a.id)
     try {
       const { data } = await http.post('/api/motion', { area, motion_id: motionId, interrupt: true })
-      if (!data.ok) Toast.warning(data.error || '动作执行失败')
+      if (!data.ok) toast.warning(data.error || '动作执行失败')
     } catch (e) { onCtrlErr(e as never) } finally { setPlayingKey('') }
   }
 
@@ -163,7 +177,7 @@ export default function ControlTab(): JSX.Element {
     try {
       const q = `mode=${m.id}${m.numeric_value != null ? `&value=${m.numeric_value}` : ''}`
       await http.post(`/api/mode?${q}`)
-      Toast.success(`已切换：${m.name}`)
+      toast.success(`已切换：${m.name}`)
     } catch (e) { onCtrlErr(e as never) } finally { setModeBusy('') }
   }
 
@@ -191,6 +205,7 @@ export default function ControlTab(): JSX.Element {
               { label: '手臂', match: (a: MotionAction) => [1, 2, 3].includes(a.area) },
               { label: '全身', match: (a: MotionAction) => a.area === 11 },
               { label: '头部', match: (a: MotionAction) => a.area === 4 },
+              { label: '讲话', match: (a: MotionAction) => a.area >= 21 && a.area <= 48 },   // 随机讲话域
             ].filter((g) => actions.some(g.match)).map((g) => (
               <div key={g.label} style={{ marginBottom: 10 }}>
                 <div style={{
@@ -225,7 +240,7 @@ export default function ControlTab(): JSX.Element {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Card title={<span><Gamepad2 size={15} style={{ verticalAlign: -2, marginRight: 6 }} />速度遥控</span>}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <Switch checked={motorOn} onChange={(v) => { if (v && !wsOpen) { Toast.warning('WS 未连接') ; return } setMotorOn(v) }} />
+            <Switch checked={motorOn} onChange={(v) => { if (v && !wsOpen) { toast.warning('WS 未连接') ; return } setMotorOn(v) }} />
             <span style={{ fontSize: 13 }}>{motorOn ? '遥控中（WASD/QE 或摇杆）' : '遥控关闭'}</span>
             {motorOn && (
               <Button size="small" type="danger" icon={<Square size={12} />} onClick={stopMotor}>停</Button>
@@ -239,7 +254,32 @@ export default function ControlTab(): JSX.Element {
             ))}
           </div>
           <div ref={joyZone} style={{ height: 170, position: 'relative', borderRadius: 10,
-            background: 'var(--semi-color-fill-0)', border: '1px solid var(--border)' }} />
+            background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)' }}>
+            {/* 键位指示（纯展示 + 实时按下高亮） */}
+            <div style={{ position: 'absolute', right: 8, top: 8, display: 'grid', gap: 3 }}>
+              {[['q', 'w', 'e'], ['a', 's', 'd']].map((row) => (
+                <div key={row.join()} style={{ display: 'flex', gap: 3 }}>
+                  {row.map((k) => {
+                    const on = pressed.has(k)
+                    return (
+                      <div key={k} title={KEY_HINT[k]} style={{
+                        width: 20, height: 20, borderRadius: 5,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, fontWeight: 600,
+                        border: `1px solid ${on ? 'transparent' : 'var(--semi-color-border)'}`,
+                        background: on ? 'var(--semi-color-primary)' : 'var(--semi-color-bg-3)',
+                        color: on ? '#fff' : 'var(--semi-color-text-2)',
+                        transform: on ? 'translateY(1px)' : 'none',
+                        transition: 'background 0.08s, transform 0.08s',
+                      }}>
+                        {k.toUpperCase()}
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
           <Typography.Text type="tertiary" size="small" style={{ marginTop: 6, display: 'block' }}>
             20Hz 连续发送；松开/关闭自动全零；断线自动停
           </Typography.Text>
