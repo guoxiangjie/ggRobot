@@ -39,6 +39,7 @@ export default function ThirdPartyPage(): JSX.Element {
   }, [])
   useEffect(() => { void load() }, [load])
 
+  /**a=null → 打开新建（EMPTY）；关闭弹窗请用 closeEdit（置 null） */
   function openEdit(a: ThirdApiDef | null): void {
     setTestResult(''); setTestArgs({})
     setEdit(a
@@ -50,6 +51,9 @@ export default function ThirdPartyPage(): JSX.Element {
         }
       : { ...EMPTY })
   }
+  function closeEdit(): void {
+    setEdit(null); setTestResult(''); setTestArgs({})
+  }
 
   async function doSave(): Promise<void> {
     if (!edit) return
@@ -57,7 +61,7 @@ export default function ThirdPartyPage(): JSX.Element {
     try {
       await api.saveThirdApi({ ...edit, name: edit.name.trim(), url: edit.url.trim() })
       toast.success('已保存')
-      openEdit(null)
+      closeEdit()
       void load()
     } catch (e) {
       toast.error((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || '保存失败')
@@ -134,9 +138,9 @@ export default function ThirdPartyPage(): JSX.Element {
 
       {/* 编辑 + 测试台 */}
       <Modal title={edit?.id ? `编辑 · ${edit.name}` : '新建三方能力'} visible={!!edit}
-        onCancel={() => openEdit(null)} width={620}
+        onCancel={closeEdit} width={620}
         footer={<>
-          <Button theme="borderless" onClick={() => openEdit(null)}>取消</Button>
+          <Button theme="borderless" onClick={closeEdit}>取消</Button>
           <Button icon={<FlaskConical size={13} />} loading={testing} onClick={() => void doTest()}>测试</Button>
           <Button theme="solid" onClick={() => void doSave()}>保存</Button>
         </>}>

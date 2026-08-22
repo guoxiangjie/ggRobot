@@ -1,6 +1,6 @@
 {
   "name": "ggrobot-platform",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "GG Robot — 机器人通用管理平台桌面客户端",
   "main": "./out/main/index.js",
   "author": "ggRobot",

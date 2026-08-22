@@ -72,8 +72,8 @@ export default function SettingsPage(): JSX.Element {
   const SECTIONS = [
     { key: 'appearance', label: '外观', icon: Palette },
     { key: 'general', label: '通用', icon: Wrench },
-    { key: 'asr', label: '语音', icon: AudioLines },
     { key: 'ctrl', label: '遥控', icon: Joystick },
+    { key: 'asr', label: '语音', icon: AudioLines },
     { key: 'agent', label: 'Agent', icon: Package },
     { key: 'about', label: '关于', icon: Info },
   ]
@@ -95,10 +95,14 @@ export default function SettingsPage(): JSX.Element {
   useEffect(() => {
     const root = scrollRef.current
     if (!root) return
-    const obs = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) setActive(e.target.id.replace('set-', ''))
+    // 当前分区 = 最后一个顶边越过参考线（视口 15%）的 —— 多分区同时触发也不跳项
+    const obs = new IntersectionObserver(() => {
+      let cur = SECTIONS[0].key
+      for (const { key } of SECTIONS) {
+        const el = document.getElementById(`set-${key}`)
+        if (el && el.getBoundingClientRect().top <= window.innerHeight * 0.15 + 30) cur = key
       }
+      setActive(cur)
     }, { root, rootMargin: '-15% 0px -70% 0px', threshold: 0 })
     SECTIONS.forEach(({ key }) => {
       const el = document.getElementById(`set-${key}`)

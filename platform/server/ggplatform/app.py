@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="ggplatform", version="2.3.0", lifespan=lifespan)
+    app = FastAPI(title="ggplatform", version="2.1.0", lifespan=lifespan)
 
     # renderer 来源：dev http://localhost:5173 / prod file://（Origin null）→ 放开即可（本机绑定）
     app.add_middleware(
