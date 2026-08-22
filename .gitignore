@@ -7,8 +7,6 @@ web/node_modules/
 web/dist/
 static/*
 
-#docs
-docs
 
 # IDE
 .idea/
