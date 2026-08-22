@@ -3,10 +3,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  Radio, RadioGroup, Switch, Input, InputNumber, Button, Typography,
+  Radio, RadioGroup, Switch, Input, InputNumber, Button, Typography, Progress, Tag,
 } from '@douyinfe/semi-ui'
 import {
-  Palette, Wrench, Joystick, Package, Info, FolderOpen,
+  Palette, Wrench, Joystick, Package, Info, FolderOpen, AudioLines, Download, Trash2,
 } from 'lucide-react'
 import { toast } from '@/api/toast'
 import { platformApi } from '@/api/platform'
@@ -63,12 +63,16 @@ export default function SettingsPage(): JSX.Element {
   // Agent
   const [debDir, setDebDir] = useState('')
   const [photoDir, setPhotoDir] = useState('')
+  // 语音转写
+  const [sv, setSv] = useState<{ downloaded: boolean; downloading: boolean } | null>(null)
+  const [svProg, setSvProg] = useState<{ progress: number; speed: string; done: boolean; error?: string } | null>(null)
   // 关于
   const [sidecarVer, setSidecarVer] = useState('')
 
   const SECTIONS = [
     { key: 'appearance', label: '外观', icon: Palette },
     { key: 'general', label: '通用', icon: Wrench },
+    { key: 'asr', label: '语音', icon: AudioLines },
     { key: 'ctrl', label: '遥控', icon: Joystick },
     { key: 'agent', label: 'Agent', icon: Package },
     { key: 'about', label: '关于', icon: Info },
@@ -80,6 +84,11 @@ export default function SettingsPage(): JSX.Element {
     void window.desktop?.settingsGet('photoDir').then(setPhotoDir).catch(() => { /* */ })
     void platformApi().get('/healthz').then(({ data }) => setSidecarVer(data.version ?? ''))
       .catch(() => { /* */ })
+    void window.desktop?.asrSvStatus().then(setSv).catch(() => { /* */ })
+    return window.desktop?.onAsrProgress((p) => {
+      setSvProg(p)
+      if (p.done && !p.error) { void window.desktop?.asrSvStatus().then(setSv); toast.success('SenseVoice 模型下载完成') }
+    })
   }, [])
 
   // scroll spy：进入视口比例最大的 section → 左侧高亮
@@ -172,6 +181,37 @@ export default function SettingsPage(): JSX.Element {
             <InputNumber value={spd.angular} min={0.1} max={1.5} step={0.1} style={{ width: 100 }}
               onChange={(v) => saveSpd({ angular: Number(v) || 0.6 })} />
           </Row>
+        </Section>
+
+        <Section id="asr" title="语音转写">
+          <Row title="内置转写引擎（paraformer）" desc="随安装包内置，装完即用；中文短语音离线转写">
+            <Tag size="small" color="green">已内置</Tag>
+          </Row>
+          <Row title="高精模型（SenseVoice）" desc="识别更准 + 情感/事件检测；下载后自动作为默认档（约 230MB，一次性）">
+            {sv?.downloaded
+              ? <Button size="small" type="danger" theme="borderless" icon={<Trash2 size={13} />}
+                  onClick={async () => {
+                    await window.desktop?.asrSvDelete()
+                    setSv({ downloaded: false, downloading: false })
+                    toast.success('已删除高精模型')
+                  }}>删除模型</Button>
+              : svProg && !svProg.done
+                ? <Button size="small" type="danger" theme="borderless"
+                    onClick={() => void window.desktop?.asrSvCancel().then(() => toast.info('已取消'))}>取消下载</Button>
+                : <Button size="small" icon={<Download size={13} />} loading={false}
+                    onClick={() => { setSvProg(null); void window.desktop?.asrSvDownload() }}>下载高精模型</Button>}
+          </Row>
+          {svProg && !svProg.done && (
+            <div style={{ marginTop: -2, marginBottom: 8, padding: '0 16px' }}>
+              <Progress percent={Math.round(svProg.progress)} />
+              <Typography.Text type="tertiary" size="small">{svProg.speed}</Typography.Text>
+            </div>
+          )}
+          {svProg?.done && svProg.error && (
+            <div style={{ padding: '0 16px 6px' }}>
+              <Typography.Text type="danger" size="small">下载失败：{svProg.error}</Typography.Text>
+            </div>
+          )}
         </Section>
 
         <Section id="agent" title="Agent">

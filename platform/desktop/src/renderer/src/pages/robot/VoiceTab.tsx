@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Card, Button, Input, Slider, Switch, Tag, Typography } from '@douyinfe/semi-ui'
-import { Mic, MicOff, Volume2, Play, AudioLines } from 'lucide-react'
+import { Mic, MicOff, Volume2, Play, AudioLines, PlayCircle, ListMusic } from 'lucide-react'
 import { makeAgentClient } from '@/api/agent'
 import { toast } from '@/api/toast'
 import { useRobot } from './RobotLayout'
+import { platformApi } from '@/api/platform'
 
 interface MicStatus {
   ok: boolean; enabled: boolean; vad_state: number; vad_label?: string
@@ -69,6 +70,52 @@ export default function VoiceTab(): JSX.Element {
       toast.success(on ? '采集已开启（唤醒词激活 VAD）' : '采集已关闭')
     } catch { toast.error('操作失败') }
   }
+  // ── 语音片段（VAD 段到达 → 列表 + 自动转写 + 回放）──
+  interface Seg { id: number; ts: number; dur: number; b64: string; text: string; busy?: boolean }
+  const [segs, setSegs] = useState<Seg[]>([])
+  const lastTsRef = useRef(0)
+  const segIdRef = useRef(0)
+
+  useEffect(() => {
+    if (!micOn) return
+    let alive = true
+    const poll = async (): Promise<void> => {
+      try {
+        // status 轮询已在上面的 mic interval；这里按 last_segment_ts 变化拉段
+        if (!mic || !mic.last_segment_ts || mic.last_segment_ts === lastTsRef.current) return
+        lastTsRef.current = mic.last_segment_ts
+        const { data } = await http.get('/api/mic/audio')
+        if (!alive || !data.ok || !data.data) return
+        const dur = Math.max(0.1, data.size / 32000)   // 16k*2bytes
+        const seg: Seg = { id: ++segIdRef.current, ts: mic.last_segment_ts, dur, b64: data.data, text: '', busy: true }
+        setSegs((ls) => [seg, ...ls].slice(0, 20))
+        // 自动转写（本地 sidecar；失败静默置提示）
+        void platformApi().post('/api/asr/transcribe', { audio_b64: data.data, model: 'auto' }, { timeout: 30000 })
+          .then(({ data: r }) => {
+            setSegs((ls) => ls.map((x) => (x.id === seg.id ? { ...x, busy: false, text: r.ok ? r.text : '（转写失败）' } : x)))
+          })
+          .catch(() => setSegs((ls) => ls.map((x) => (x.id === seg.id ? { ...x, busy: false, text: '（转写不可用）' } : x))))
+      } catch { /* */ }
+    }
+    void poll()
+  }, [mic?.last_segment_ts, micOn, http])   // ts 变化即触发
+
+  /**PCM(16k/16bit/mono, base64) → WAV Blob 播放 */
+  function playSeg(seg: Seg): void {
+    const bin = atob(seg.b64)
+    const pcm = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) pcm[i] = bin.charCodeAt(i)
+    const header = new ArrayBuffer(44)
+    const dv = new DataView(header)
+    const ws = (off: number, str: string): void => { for (let i = 0; i < str.length; i++) dv.setUint8(off + i, str.charCodeAt(i)) }
+    ws(0, 'RIFF'); dv.setUint32(4, 36 + pcm.length, true); ws(8, 'WAVE'); ws(12, 'fmt ')
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true)
+    dv.setUint32(24, 16000, true); dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true)
+    ws(36, 'data'); dv.setUint32(40, pcm.length, true)
+    const blob = new Blob([header, pcm], { type: 'audio/wav' })
+    new Audio(URL.createObjectURL(blob)).play().catch(() => toast.warning('播放失败'))
+  }
+
   async function switchSource(src: number): Promise<void> {
     try {
       await http.post('/api/mic/source', { mic_source: src })
@@ -152,8 +199,35 @@ export default function VoiceTab(): JSX.Element {
           </div>
         )}
         <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 10 }}>
-          v0.9+ 需唤醒词激活 VAD；ASR 由 robot.yaml mic.asr_provider 配置
+          v0.9+ 需唤醒词激活 VAD（采集开启后说唤醒词）
         </Typography.Text>
+      </Card>
+
+      {/* 语音片段：回放 + 本地转写 */}
+      <Card title={<span><ListMusic size={15} style={{ verticalAlign: -2, marginRight: 6 }} />语音片段（{segs.length}）</span>}>
+        {segs.length === 0
+          ? <Typography.Text type="tertiary" size="small">
+              {micOn ? '监听中——唤醒词激活后，每段语音自动转文字（本地模型，离线）' : '开启采集后语音段会出现在这里'}
+            </Typography.Text>
+          : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflow: 'auto' }}>
+              {segs.map((seg) => (
+                <div key={seg.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 8px',
+                  border: '1px solid var(--semi-color-border)', borderRadius: 8 }}>
+                  <Button size="small" theme="borderless" icon={<PlayCircle size={15} />}
+                    onClick={() => playSeg(seg)} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+                      {new Date(seg.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false })} · {seg.dur.toFixed(1)}s
+                    </div>
+                    <div style={{ fontSize: 13, wordBreak: 'break-all' }}>
+                      {seg.busy ? <span style={{ color: 'var(--semi-color-text-2)' }}>转写中…</span> : seg.text}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
       </Card>
     </div>
   )

@@ -100,6 +100,68 @@ export function registerIpc(): void {
     fs.writeFileSync(full, new Uint8Array(data))
     return full
   })
+  // ── SenseVoice 高精模型下载（~230MB，两文件；URL 前缀可在 settings 覆盖，默认国内镜像）──
+  const SV_FILES = ['model.int8.onnx', 'tokens.txt']
+  const svDir = (): string => path.join(app.getPath('userData'), 'asr-models', 'sensevoice')
+  let svAbort = false
+  const sendSv = (win: Electron.WebContents, progress: number, speed: string, done: boolean, error = ''): void => {
+    if (!win.isDestroyed()) win.send('asr:progress', { progress, speed, done, error })
+  }
+  ipcMain.handle('asrSvStatus', () => {
+    const dir = svDir()
+    return {
+      downloaded: SV_FILES.every((f) => fs.existsSync(path.join(dir, f))),
+      downloading: !svAbort && fs.existsSync(path.join(dir, '.downloading')),
+    }
+  })
+  ipcMain.handle('asrSvDownload', async (e) => {
+    if (!svAbort && fs.existsSync(path.join(svDir(), '.downloading'))) return { ok: false, error: '已有下载进行中' }
+    svAbort = false
+    fs.mkdirSync(svDir(), { recursive: true })
+    fs.writeFileSync(path.join(svDir(), '.downloading'), '1')
+    const base = readSettings().asrUrl
+      || 'https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09/resolve/main'
+    try {
+      for (let fi = 0; fi < SV_FILES.length; fi++) {
+        const f = SV_FILES[fi]
+        const r = await fetch(`${base}/${f}`, { redirect: 'follow' })
+        if (!r.ok || !r.body) throw new Error(`下载 ${f} 失败: HTTP ${r.status}`)
+        const total = Number(r.headers.get('content-length')) || (f.endsWith('.onnx') ? 232 * 1024 * 1024 : 150 * 1024)
+        const out = fs.createWriteStream(path.join(svDir(), f + '.part'))
+        let recv = 0
+        const t0 = Date.now()
+        const reader = r.body.getReader()
+        for (;;) {
+          if (svAbort) throw new Error('已取消')
+          const { done, value } = await reader.read()
+          if (done) break
+          recv += value.byteLength
+          out.write(value)
+          const mb = recv / 1048576
+          const speed = (mb / ((Date.now() - t0) / 1000)).toFixed(1)
+          // 进度：onnx 占 99.9%，tokens 收尾
+          sendSv(e.sender, Math.min(99, ((fi + recv / total) / SV_FILES.length) * 100), `${mb.toFixed(0)}MB ${speed}MB/s`, false)
+        }
+        await new Promise((res) => out.end(res))
+        fs.renameSync(path.join(svDir(), f + '.part'), path.join(svDir(), f))
+      }
+      fs.rmSync(path.join(svDir(), '.downloading'))
+      sendSv(e.sender, 100, '', true)
+      return { ok: true, dir: svDir() }
+    } catch (err) {
+      fs.rmSync(path.join(svDir(), '.downloading'), { force: true })
+      const msg = err instanceof Error ? err.message : String(err)
+      sendSv(e.sender, 0, '', true, msg)
+      return { ok: false, error: msg }
+    }
+  })
+  ipcMain.handle('asrSvCancel', () => { svAbort = true; return true })
+  ipcMain.handle('asrSvDelete', () => {
+    svAbort = true
+    fs.rmSync(svDir(), { recursive: true, force: true })
+    return true
+  })
+
   ipcMain.handle('getAutoLaunch', () => app.getLoginItemSettings().openAtLogin)
   ipcMain.handle('setAutoLaunch', (_e, on: boolean) => {
     app.setLoginItemSettings({ openAtLogin: on })

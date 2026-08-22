@@ -43,6 +43,15 @@ const api = {
   pickDirectory: (def?: string): Promise<string | null> => ipcRenderer.invoke('pickDirectory', def ?? ''),
   openUserDataDir: (): Promise<string> => ipcRenderer.invoke('openUserDataDir'),
   savePhoto: (data: ArrayBuffer, nameHint: string): Promise<string> => ipcRenderer.invoke('savePhoto', data, nameHint),
+  asrSvStatus: (): Promise<{ downloaded: boolean; downloading: boolean }> => ipcRenderer.invoke('asrSvStatus'),
+  asrSvDownload: (): Promise<{ ok: boolean; dir?: string; error?: string }> => ipcRenderer.invoke('asrSvDownload'),
+  asrSvCancel: (): Promise<boolean> => ipcRenderer.invoke('asrSvCancel'),
+  asrSvDelete: (): Promise<boolean> => ipcRenderer.invoke('asrSvDelete'),
+  onAsrProgress: (cb: (p: { progress: number; speed: string; done: boolean; error?: string }) => void): (() => void) => {
+    const listener = (_i: unknown, data: { progress: number; speed: string; done: boolean; error?: string }): void => cb(data)
+    ipcRenderer.on('asr:progress', listener)
+    return () => ipcRenderer.removeListener('asr:progress', listener)
+  },
   getAutoLaunch: (): Promise<boolean> => ipcRenderer.invoke('getAutoLaunch'),
   setAutoLaunch: (on: boolean): Promise<boolean> => ipcRenderer.invoke('setAutoLaunch', on),
 }

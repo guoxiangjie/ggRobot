@@ -53,11 +53,18 @@ function spawnOnce(port: number): ChildProcess {
     args = ['--port', String(port)]
     cwd = path.dirname(file)   // prod 无 server 源码目录，cwd 用二进制所在目录
   }
+  // ASR 模型目录：内置（随包 resources/asr）+ 用户数据（SenseVoice 下载处）
+  const asrBuiltin = is.dev
+    ? path.resolve(process.cwd(), 'resources/asr')
+    : path.join(process.resourcesPath, 'asr')
+  const asrData = path.join(app.getPath('userData'), 'asr-models')
   const p = spawn(file, args, {
     cwd,
     env: {
       ...process.env,
       GG_PLATFORM_PORT: String(port),
+      GG_ASR_BUILTIN_DIR: asrBuiltin,
+      GG_ASR_DATA_DIR: asrData,
       PYTHONUNBUFFERED: '1',
       // 数据库放 userData（.app 包内可能只读且重装即丢）
       GG_PLATFORM_DB: path.join(app.getPath('userData'), 'data.db'),

@@ -11,6 +11,9 @@ extraResources:
   # PyInstaller onedir 产物（M5 make sidecar-build 生成）
   - from: resources/sidecar
     to: sidecar
+  # 内置 ASR 模型（paraformer-small int8，装完即用的默认转写档）
+  - from: resources/asr
+    to: asr
 asarUnpack:
   - "**/*.node"
 mac:
