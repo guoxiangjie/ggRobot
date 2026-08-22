@@ -41,3 +41,6 @@ platform/desktop/out/
 platform/desktop/release/
 platform/desktop/resources/sidecar/
 *.tsbuildinfo
+
+# 3D 模型源文件（大文件，随 deb/dmg 流转不入库）
+模型文件/
