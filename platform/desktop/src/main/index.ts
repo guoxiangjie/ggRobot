@@ -1,6 +1,6 @@
 /**GG Robot 平台主进程 — 窗口（状态记忆）+ sidecar 生命周期*/
 
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, session } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { is } from '@electron-toolkit/utils'
@@ -141,6 +141,8 @@ function setupApplicationMenu(): void {
 }
 
 app.whenReady().then(() => {
+  // 内网应用强制直连：绕过系统代理（公司代理/PAC 会把到机器人 IP 的请求转出去，全部超时）
+  session.defaultSession?.setProxy({ mode: 'direct' }).catch(() => { /* */ })
   registerIpc()
   setupApplicationMenu()
   // dev 模式 Dock 也用产品图标（打包版由 electron-builder icns 负责）
