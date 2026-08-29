@@ -1,0 +1,7 @@
+
+
+CommonResponse reponse
+
+HandType left_hands_type
+
+HandType right_hands_type

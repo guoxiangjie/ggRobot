@@ -1,0 +1,29 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/app_proxy/msg/CurrentVersion.msg
+// generated code does not contain a copyright notice
+
+
+module aimdk_msgs {
+  module msg {
+    @verbatim (language="comment", text=
+      "------------------------------------------------------------------------------------" "\n"
+      "机上资源的当前版本的数据类型定义" "\n"
+      "------------------------------------------------------------------------------------" "\n"
+      "资源版本号")
+    struct CurrentVersion {
+      string version;
+
+      @verbatim (language="comment", text=
+        "资源名称")
+      string name;
+
+      @verbatim (language="comment", text=
+        "资源路径")
+      sequence<string> files;
+
+      @verbatim (language="comment", text=
+        "资源下载时间")
+      uint64 download_timestamp_seconds;
+    };
+  };
+};

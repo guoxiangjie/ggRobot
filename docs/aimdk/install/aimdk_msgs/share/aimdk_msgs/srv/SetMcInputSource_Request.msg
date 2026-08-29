@@ -1,0 +1,6 @@
+# Request 部分
+CommonRequest request
+
+McInputAction action # ADD MODIFY DELETE DISABLE ENABLE
+
+McInputSource input_source

@@ -1,0 +1,115 @@
+actual:
+  active_joint_frame_type: ["leg", "waist", "head", "arm"]
+  active_joint_name: [
+      [
+        "left_hip_pitch_joint",
+        "left_hip_roll_joint",
+        "left_hip_yaw_joint",
+        "left_knee_joint",
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint",
+        "right_hip_pitch_joint",
+        "right_hip_roll_joint",
+        "right_hip_yaw_joint",
+        "right_knee_joint",
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint",
+      ], #right leg
+
+      [ "waist_yaw_joint", 
+        "waist_pitch_joint", 
+        "waist_roll_joint", 
+      ], # waist
+
+      [
+        "head_yaw_joint",
+        "head_pitch_joint",
+      ], # head
+
+      [
+        "left_shoulder_pitch_joint",
+        "left_shoulder_roll_joint",
+        "left_shoulder_yaw_joint",
+        "left_elbow_joint",
+        "left_wrist_yaw_joint",
+        "left_wrist_pitch_joint",
+        "left_wrist_roll_joint",
+        "right_shoulder_pitch_joint",
+        "right_shoulder_roll_joint",
+        "right_shoulder_yaw_joint",
+        "right_elbow_joint",
+        "right_wrist_yaw_joint",
+        "right_wrist_pitch_joint",
+        "right_wrist_roll_joint",
+      ], #right arm
+
+      
+    ]
+
+  active_joint_control_type: [
+      ["position", "position", "position", "position", "position", "position", "position", "position", "position", "position", "position", "position"], #right leg
+      [ "position", "position", "position"], # waist
+      [ "position", "position" ], # head
+      [
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+        "position",
+      ], #right arm
+    ]
+
+sensor:
+  passive_joint_frame_type: []
+  passive_joint_name: []
+
+  sensor_frame_type: ["imu", "imu_1", "odom"]
+  sensor_name: [
+      [
+        "body-orientation",
+        "body-angular-velocity",
+        "body-linear-pos",
+        "body-linear-vel",
+        "body-linear-acceleration",
+      ], #imu
+      [
+        "body-orientation-imu_1",
+        "body-angular-velocity-imu_1",
+        "body-linear-pos-imu_1",
+        "body-linear-vel-imu_1",
+        "body-linear-acceleration-imu_1",
+      ], #imu_1
+      [
+        "pelvis"
+      ] #odom
+      # [
+      #   "foot_left_contact_toe_l",
+      #   "foot_left_contact_toe_r",
+      #   "foot_left_contact_heel_l",
+      #   "foot_left_contact_heel_r",
+      # ], #left foot
+      # [
+      #   "foot_right_contact_toe_l",
+      #   "foot_right_contact_toe_r",
+      #   "foot_right_contact_heel_l",
+      #   "foot_right_contact_heel_r",
+      # ], #right foot
+    ]
+
+logical:
+  nominal_configuration:
+    [
+      [ -0.24, 0.0, 0.0, 0.45, -0.21, 0.0, -0.24, 0.0, 0.0, 0.45, -0.21, 0.0 ],
+      [ 0.0, 0.0, 0.0 ],
+      [ 0.0, 0.0 ],
+      [ 0.196, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.196, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 ],
+    ]

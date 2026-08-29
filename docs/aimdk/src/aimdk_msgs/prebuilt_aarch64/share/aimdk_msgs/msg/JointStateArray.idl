@@ -1,0 +1,19 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/hal/msg/JointStateArray.msg
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/DomainErrorState.idl"
+#include "aimdk_msgs/msg/JointState.idl"
+#include "aimdk_msgs/msg/MessageHeader.idl"
+
+module aimdk_msgs {
+  module msg {
+    struct JointStateArray {
+      aimdk_msgs::msg::MessageHeader header;
+
+      aimdk_msgs::msg::DomainErrorState state;
+
+      sequence<aimdk_msgs::msg::JointState> joints;
+    };
+  };
+};

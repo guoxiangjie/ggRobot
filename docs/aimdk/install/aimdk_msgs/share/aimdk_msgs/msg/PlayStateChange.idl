@@ -1,0 +1,19 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/hal/audio/msg/PlayStateChange.msg
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/PlayStateType.idl"
+
+module aimdk_msgs {
+  module msg {
+    @verbatim (language="comment", text=
+      "播放来源")
+    struct PlayStateChange {
+      string pkg_name;
+
+      @verbatim (language="comment", text=
+        "播放状态")
+      aimdk_msgs::msg::PlayStateType state;
+    };
+  };
+};

@@ -1,0 +1,40 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/app_proxy/srv/ExecuteActionResource.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonRequest.idl"
+#include "aimdk_msgs/msg/CommonResponse.idl"
+#include "aimdk_msgs/msg/SlaveDevice.idl"
+
+module aimdk_msgs {
+  module srv {
+    @verbatim (language="comment", text=
+      "--------------------------------------------------------------------------------------------------------------" "\n"
+      "播放机器人上灵创动作" "\n"
+      "--------------------------------------------------------------------------------------------------------------")
+    struct ExecuteActionResource_Request {
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "请求头")
+      aimdk_msgs::msg::CommonRequest header;
+
+      string resource_key;
+
+      string resource_version;
+
+      sequence<aimdk_msgs::msg::SlaveDevice> slaves;
+
+      @verbatim (language="comment", text=
+        "直接使用json")
+      string meta;
+    };
+    @verbatim (language="comment", text=
+      "---------------------------------------------------- resp")
+    struct ExecuteActionResource_Response {
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "响应头")
+      aimdk_msgs::msg::CommonResponse header;
+    };
+  };
+};

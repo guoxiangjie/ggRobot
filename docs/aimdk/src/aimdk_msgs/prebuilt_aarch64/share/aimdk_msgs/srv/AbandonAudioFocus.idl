@@ -1,0 +1,36 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/hal/audio/srv/AbandonAudioFocus.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonRequest.idl"
+#include "aimdk_msgs/msg/CommonResponse.idl"
+#include "aimdk_msgs/msg/FocusRequester.idl"
+#include "aimdk_msgs/msg/FocusResponse.idl"
+
+module aimdk_msgs {
+  module srv {
+    @verbatim (language="comment", text=
+      "----------------------------------------------------" "\n"
+      "request")
+    struct AbandonAudioFocus_Request {
+      @verbatim (language="comment", text=
+        "请求头")
+      aimdk_msgs::msg::CommonRequest request;
+
+      @verbatim (language="comment", text=
+        "请求焦点信息")
+      aimdk_msgs::msg::FocusRequester focus_requester;
+    };
+    struct AbandonAudioFocus_Response {
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "response" "\n"
+        "响应头")
+      aimdk_msgs::msg::CommonResponse reponse;
+
+      @verbatim (language="comment", text=
+        "请求结果")
+      aimdk_msgs::msg::FocusResponse focus_response;
+    };
+  };
+};

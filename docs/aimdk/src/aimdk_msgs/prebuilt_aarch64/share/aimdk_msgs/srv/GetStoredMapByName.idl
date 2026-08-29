@@ -1,0 +1,94 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/mm/srv/GetStoredMapByName.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/HRPoint.idl"
+#include "aimdk_msgs/msg/NaviPoint.idl"
+#include "aimdk_msgs/msg/Path.idl"
+#include "aimdk_msgs/msg/QRPoint.idl"
+#include "aimdk_msgs/msg/Region.idl"
+#include "nav_msgs/msg/MapMetaData.idl"
+#include "std_msgs/msg/Header.idl"
+
+module aimdk_msgs {
+  module srv {
+    @verbatim (language="comment", text=
+      "--------------------------------------------------------------------------------------------------------------" "\n"
+      "slam模块提供给其他模块通过地图名称获取存储的地图数据的服务" "\n"
+      "--------------------------------------------------------------------------------------------------------------")
+    struct GetStoredMapByName_Request {
+      @verbatim (language="comment", text=
+        "请求数据头")
+      std_msgs::msg::Header header;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "地图名称")
+      string map_name;
+    };
+    @verbatim (language="comment", text=
+      "--------------------------------------------------------------------------------------------------------------")
+    struct GetStoredMapByName_Response {
+      @verbatim (language="comment", text=
+        "接口返回码, 0代表成功，其他错误码有各自含义")
+      uint64 code;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "响应数据头")
+      std_msgs::msg::Header header;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "地图信息, 包含了长宽，分辨率等信息")
+      nav_msgs::msg::MapMetaData map_info;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "拓扑信息" "\n"
+        "相应地图的版本号")
+      uint64 map_version;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "地图路径, 地图保存的png路径")
+      string map_path;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "地图数据 单通道数据，三个值-1，100，0 (此字段暂时因T2跨板通信保留)")
+      sequence<int8> data;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "导航点拓扑信息，二维位姿，已变换到世界坐标系下")
+      sequence<aimdk_msgs::msg::NaviPoint> navi_points;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "二维码点拓扑信息")
+      sequence<aimdk_msgs::msg::QRPoint> qr_points;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "高精度点拓扑信息")
+      sequence<aimdk_msgs::msg::HRPoint> hr_points;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "路径拓扑信息")
+      sequence<aimdk_msgs::msg::Path> paths;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "拓扑信息" "\n"
+        "区域拓扑信息，当前仅包含虚拟墙信息")
+      sequence<aimdk_msgs::msg::Region> regions;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "地图ID")
+      uint64 map_id;
+    };
+  };
+};

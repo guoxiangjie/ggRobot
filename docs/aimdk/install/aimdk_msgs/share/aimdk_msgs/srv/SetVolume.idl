@@ -1,0 +1,34 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/hal/audio/srv/SetVolume.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonRequest.idl"
+#include "aimdk_msgs/msg/CommonResponse.idl"
+
+module aimdk_msgs {
+  module srv {
+    @verbatim (language="comment", text=
+      "----------------------------------------------------" "\n"
+      "request")
+    struct SetVolume_Request {
+      @verbatim (language="comment", text=
+        "请求头")
+      aimdk_msgs::msg::CommonRequest request;
+
+      @verbatim (language="comment", text=
+        "请求音量（0~100）")
+      uint32 audio_volume;
+    };
+    struct SetVolume_Response {
+      @verbatim (language="comment", text=
+        "----------------------------------------------------" "\n"
+        "response" "\n"
+        "响应头")
+      aimdk_msgs::msg::CommonResponse reponse;
+
+      @verbatim (language="comment", text=
+        "播放音量（0~100）")
+      uint32 audio_volume;
+    };
+  };
+};

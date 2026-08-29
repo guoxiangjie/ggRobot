@@ -1,0 +1,24 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/mc/action/McActionInfo.msg
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/McAction.idl"
+#include "aimdk_msgs/msg/McActionStatus.idl"
+
+module aimdk_msgs {
+  module msg {
+    @verbatim (language="comment", text=
+      "当前运行的Action")
+    struct McActionInfo {
+      aimdk_msgs::msg::McAction current_action;
+
+      @verbatim (language="comment", text=
+        "描述")
+      string action_desc;
+
+      @verbatim (language="comment", text=
+        "Action状态")
+      aimdk_msgs::msg::McActionStatus status;
+    };
+  };
+};

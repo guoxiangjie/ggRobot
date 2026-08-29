@@ -1,0 +1,9 @@
+# ----------------------------------------------------
+# request
+
+# 请求头
+CommonRequest request
+
+# 请求音量（0~100）
+uint32 audio_volume
+

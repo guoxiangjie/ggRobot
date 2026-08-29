@@ -1,0 +1,1 @@
+../../../en/dev/_static/_sphinx_javascript_frameworks_compat.js

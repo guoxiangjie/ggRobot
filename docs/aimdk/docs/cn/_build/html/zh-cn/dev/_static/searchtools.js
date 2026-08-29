@@ -1,0 +1,1 @@
+../../../en/dev/_static/searchtools.js

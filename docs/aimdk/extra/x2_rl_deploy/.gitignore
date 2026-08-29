@@ -1,0 +1,34 @@
+# build
+build/
+install/
+log/
+
+
+# run
+*.dump
+sim_*_cache.txt
+screenshot.png
+MJDATA.TXT
+MJMODEL.TXT
+MUJOCO_LOG.TXT
+
+# misc
+Thumbs.db
+.DS_Store
+._*
+__MACOSX/
+.vscode/
+.idea/
+*~
+[._]*.sw[a-p]
+.\#*
+\#*\#
+*.swp
+bak
+*.bak
+tmp
+*.tmp
+*.orig
+*.rej
+*.patch
+*.diff

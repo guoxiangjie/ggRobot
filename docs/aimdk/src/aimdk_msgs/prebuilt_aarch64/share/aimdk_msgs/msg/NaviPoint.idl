@@ -1,0 +1,25 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/mm/msg/NaviPoint.msg
+// generated code does not contain a copyright notice
+
+#include "geometry_msgs/msg/Pose2D.idl"
+
+module aimdk_msgs {
+  module msg {
+    @verbatim (language="comment", text=
+      "--------------------------------------------------------------------------------------------------------------" "\n"
+      "导航点的数据结构" "\n"
+      "--------------------------------------------------------------------------------------------------------------")
+    struct NaviPoint {
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "点位id")
+      int32 point_id;
+
+      @verbatim (language="comment", text=
+        "-------------------------------------------------------------" "\n"
+        "导航点，二维坐标位姿")
+      geometry_msgs::msg::Pose2D navi_point;
+    };
+  };
+};

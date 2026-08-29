@@ -1,0 +1,1 @@
+../../../../../../../en/dev/_static/js/mermaid@11.12.2/chunks/mermaid.esm.min/architecture-U656AL7Q-3ZQKGQJL.mjs

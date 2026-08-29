@@ -1,0 +1,41 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/mc/motion/srv/SetMcPresetMotion.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonTaskResponse.idl"
+#include "aimdk_msgs/msg/McControlArea.idl"
+#include "aimdk_msgs/msg/McPresetMotion.idl"
+#include "aimdk_msgs/msg/RequestHeader.idl"
+
+module aimdk_msgs {
+  module srv {
+    @verbatim (language="comment", text=
+      "请求头")
+    struct SetMcPresetMotion_Request {
+      aimdk_msgs::msg::RequestHeader header;
+
+      @verbatim (language="comment", text=
+        "控制区域")
+      aimdk_msgs::msg::McControlArea area;
+
+      @verbatim (language="comment", text=
+        "预设动作")
+      aimdk_msgs::msg::McPresetMotion motion;
+
+      @verbatim (language="comment", text=
+        "是否打断前一个动作")
+      boolean interrupt;
+
+      @verbatim (language="comment", text=
+        "自定义动作地址")
+      string ani_path;
+
+      @verbatim (language="comment", text=
+        "动作运行时间，0代表立刻运行，单位: ms (UNIX时间)")
+      uint64 play_timestamp;
+    };
+    struct SetMcPresetMotion_Response {
+      aimdk_msgs::msg::CommonTaskResponse response;
+    };
+  };
+};

@@ -1,0 +1,47 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from aimdk_msgs/interface/robot/common/msg/CommonState.msg
+// generated code does not contain a copyright notice
+
+
+module aimdk_msgs {
+  module msg {
+    module CommonState_Constants {
+      @verbatim (language="comment", text=
+        "未知")
+      const int32 UNKNOWN = 0;
+      @verbatim (language="comment", text=
+        "成功")
+      const int32 SUCCESS = 1;
+      @verbatim (language="comment", text=
+        "失败")
+      const int32 FAILURE = 2;
+      @verbatim (language="comment", text=
+        "中止")
+      const int32 ABORTED = 3;
+      @verbatim (language="comment", text=
+        "超时")
+      const int32 TIMEOUT = 4;
+      @verbatim (language="comment", text=
+        "无效")
+      const int32 INVALID = 5;
+      @verbatim (language="comment", text=
+        "手动")
+      const int32 IN_MANUAL = 6;
+      @verbatim (language="comment", text=
+        "未就绪")
+      const int32 NOT_READY = 100;
+      @verbatim (language="comment", text=
+        "等待中")
+      const int32 PENDING = 200;
+      @verbatim (language="comment", text=
+        "已创建")
+      const int32 CREATED = 300;
+      @verbatim (language="comment", text=
+        "运行中")
+      const int32 RUNNING = 400;
+    };
+    struct CommonState {
+      int32 value;
+    };
+  };
+};

@@ -1,0 +1,19 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from aimdk_msgs/interface/robot/interaction/srv/SetMicSourceRequest.srv
+// generated code does not contain a copyright notice
+
+#include "aimdk_msgs/msg/CommonRequest.idl"
+#include "aimdk_msgs/msg/CommonResponse.idl"
+
+module aimdk_msgs {
+  module srv {
+    struct SetMicSourceRequest_Request {
+      aimdk_msgs::msg::CommonRequest header;
+
+      uint32 mic_source;
+    };
+    struct SetMicSourceRequest_Response {
+      aimdk_msgs::msg::CommonResponse header;
+    };
+  };
+};
