@@ -147,6 +147,8 @@ make deploy/start  # 开发期调试：rsync 源码 + SSH 前台跑（正式分�
 
 平台桌面端（M4 后）：`cd platform/desktop && pnpm dev`（自动拉起 platform/server sidecar）。
 
+**Windows 版**（Mac 交叉打包，无需 Win 电脑）：`make desktop-package-win` —— GitHub Actions（win-sidecar workflow）在 Windows runner 上跑 PyInstaller 出 win sidecar → `gh run download` 拉回 `resources/sidecar-win/` → electron-builder `--win` 交叉出 nsis。远端 `github`（guoxiangjie/ggRobot，gh CLI 已 auth）。Mac/win sidecar 目录分离（`resources/sidecar` / `resources/sidecar-win`），互不覆盖。
+
 **sudoers 铁律**：机器人 agi 免密仅 `/usr/bin/apt`——远程命令只用 `sudo -n apt install`，systemctl/写 /etc 全部收在 deb 的 postinst 内。
 
 ## X2 沙盒铁律（实机踩坑结晶，详见 docs/x2-agent-deploy-pitfalls.md）
