@@ -67,6 +67,7 @@ function spawnOnce(port: number): ChildProcess {
       GG_ASR_BUILTIN_DIR: asrBuiltin,
       GG_ASR_DATA_DIR: asrData,
       PYTHONUNBUFFERED: '1',
+      PYTHONIOENCODING: 'utf-8',   // Windows 管道默认 GBK，emoji 日志会炸进程
       // 数据库放 userData（.app 包内可能只读且重装即丢）
       GG_PLATFORM_DB: path.join(app.getPath('userData'), 'data.db'),
     },

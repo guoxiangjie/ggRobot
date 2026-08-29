@@ -5,6 +5,7 @@
 
 import argparse
 import os
+import sys
 
 import uvicorn
 
@@ -12,6 +13,15 @@ from .app import create_app
 
 
 def main() -> None:
+    # Windows 管道 stdout 默认 ANSI(GBK)，print emoji 直接 UnicodeEncodeError 崩进程
+    # （Electron spawn 走管道必炸；控制台手动跑不炸——差异即坑）。强制 UTF-8 + 容错。
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None:
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, OSError):
+                pass
+
     parser = argparse.ArgumentParser(prog="ggplatform")
     parser.add_argument("--port", type=int, default=None, help="监听端口（默认 8310）")
     args = parser.parse_args()
