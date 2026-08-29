@@ -1,0 +1,31 @@
+# Windows 版 sidecar 构建 — PyInstaller 无法交叉编译，借 GitHub Actions 的
+# Windows runner 出包，Mac 拉回 artifact 后 electron-builder --win 交叉合包。
+# 触发：手动 / server 代码变化推 2.0|main。产物名固定 win-sidecar（Makefile 按名拉取）。
+name: win-sidecar
+on:
+  workflow_dispatch:
+  push:
+    branches: ["2.0", main]
+    paths: ["platform/server/**", ".github/workflows/win-sidecar.yml"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: platform/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 安装依赖
+        run: pip install -r requirements.txt pyinstaller
+      - name: PyInstaller 打包（spec = Makefile sidecar-build 同源）
+        run: pyinstaller ggplatform.spec --noconfirm --clean
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-sidecar
+          path: platform/server/dist/ggplatform/
+          if-no-files-found: error
+          retention-days: 30

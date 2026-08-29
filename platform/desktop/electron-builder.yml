@@ -8,10 +8,7 @@ files:
   - out/**/*
   - "!**/*.map"
 extraResources:
-  # PyInstaller onedir 产物（M5 make sidecar-build 生成）
-  - from: resources/sidecar
-    to: sidecar
-  # 内置 ASR 模型（paraformer-small int8，装完即用的默认转写档）
+  # 内置 ASR 模型（paraformer-small int8，装完即用的默认转写档；两平台共用）
   - from: resources/asr
     to: asr
 asarUnpack:
@@ -23,3 +20,19 @@ mac:
       arch: [arm64]
   category: public.app-category.developer-tools
   identity: null   # ad-hoc 签名（未购 Apple Developer）
+  extraResources:
+    # PyInstaller onedir 产物（Mac 本机 make sidecar-build 生成）
+    - from: resources/sidecar
+      to: sidecar
+win:
+  icon: resources/icon.png   # builder 自动转多尺寸 ico
+  target:
+    - target: nsis
+      arch: [x64]
+  extraResources:
+    # Windows sidecar 来自 GitHub Actions artifact（make win-sidecar-fetch 拉取）
+    - from: resources/sidecar-win
+      to: sidecar
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

@@ -52,6 +52,17 @@ desktop-package: sidecar-build
 desktop-dir: sidecar-build
 	cd platform/desktop && ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" pnpm package:dir
 
+# ── Windows 打包（sidecar 来自 GitHub Actions，electron-builder 交叉出 nsis）──
+win-sidecar-fetch:
+	rm -rf platform/desktop/resources/sidecar-win
+	mkdir -p platform/desktop/resources/sidecar-win/ggplatform
+	gh run download -n win-sidecar -D platform/desktop/resources/sidecar-win/ggplatform -R guoxiangjie/ggRobot
+	@echo "✅ win sidecar → platform/desktop/resources/sidecar-win/ggplatform"
+
+desktop-package-win: win-sidecar-fetch
+	cd platform/desktop && ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" pnpm package:win
+	@echo "✅ exe → platform/desktop/release/"
+
 # ── 契约生成（contracts/catalog.json → ts/py）──
 contracts:
 	@echo "🔧 生成契约代码..."

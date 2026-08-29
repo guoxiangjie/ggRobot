@@ -49,7 +49,8 @@ function spawnOnce(port: number): ChildProcess {
     cwd = serverRoot
   } else {
     // PyInstaller --onedir：可执行文件在同名目录内
-    file = path.join(process.resourcesPath, 'sidecar', 'ggplatform', 'ggplatform')
+    const exe = process.platform === 'win32' ? 'ggplatform.exe' : 'ggplatform'
+    file = path.join(process.resourcesPath, 'sidecar', 'ggplatform', exe)
     args = ['--port', String(port)]
     cwd = path.dirname(file)   // prod 无 server 源码目录，cwd 用二进制所在目录
   }

@@ -38,6 +38,7 @@ platform/desktop/node_modules/
 platform/desktop/out/
 platform/desktop/release/
 platform/desktop/resources/sidecar/
+platform/desktop/resources/sidecar-win/
 *.tsbuildinfo
 
 # 3D 模型源文件（大文件，随 deb/dmg 流转不入库）

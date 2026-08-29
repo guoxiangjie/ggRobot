@@ -11,7 +11,8 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "package": "electron-vite build && electron-builder --mac",
-    "package:dir": "electron-vite build && electron-builder --dir --mac"
+    "package:dir": "electron-vite build && electron-builder --dir --mac",
+    "package:win": "electron-vite build && electron-builder --win"
   },
   "dependencies": {
     "ssh2": "^1.16.0",
