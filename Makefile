@@ -63,6 +63,22 @@ desktop-package-win: win-sidecar-fetch
 	cd platform/desktop && ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" pnpm package:win
 	@echo "✅ exe → platform/desktop/release/"
 
+# ── A3 agent（HDU 部署：rsync + venv + systemd user；严禁 apt，见 docs/a3-ultra-dev-notes.md）──
+# 用法：make a3-deploy A3_IP=<HDU地址>（默认 WiFi IP 需现场查；内网口固定 10.42.10.10）
+A3_IP ?= 10.42.10.10
+
+a3-deploy:
+	bash agents/a3/deploy/deploy.sh $(A3_IP)
+
+a3-restart:
+	ssh agi@$(A3_IP) "systemctl --user restart ggrobot-a3 && sleep 3 && curl -s -m 5 http://127.0.0.1:8300/api/health"
+
+a3-status:
+	ssh agi@$(A3_IP) "systemctl --user status ggrobot-a3 --no-pager -l | head -15; curl -s -m 5 http://127.0.0.1:8300/api/health; echo"
+
+a3-log:
+	ssh agi@$(A3_IP) "journalctl --user -u ggrobot-a3 -n 80 --no-pager"
+
 # ── 契约生成（contracts/catalog.json → ts/py）──
 contracts:
 	@echo "🔧 生成契约代码..."

@@ -151,6 +151,79 @@
       "report": {
         "migrate_states": "list<string> 允许迁移的状态清单"
       }
+    },
+    {
+      "type": "nav.goto",
+      "category": "motion",
+      "desc": "导航到点（A3；到点/坐标/直线/高精多模式）",
+      "call": {
+        "kind": "string=goal goal/pose2d/linear_goal/linear_pose2d/precise_goal",
+        "map_id": "string 必填 当前地图 ID",
+        "target_id": "number? 拓扑导航点 ID（与 x/y 二选一）",
+        "x": "number? 目标 X（m）",
+        "y": "number? 目标 Y（m）",
+        "angle": "number=0 朝向（rad）"
+      },
+      "report": {
+        "kinds": "list<string> 支持的导航模式",
+        "task_id": "任务句柄（控制/查询用）"
+      }
+    },
+    {
+      "type": "nav.control",
+      "category": "motion",
+      "desc": "导航任务控制（A3；暂停/恢复/取消）",
+      "call": {
+        "op": "string 必填 pause/resume/cancel",
+        "task_id": "number=0 任务 ID（0=最近）"
+      },
+      "report": {
+        "ops": "list<string> 支持的操作"
+      }
+    },
+    {
+      "type": "dance.play",
+      "category": "motion",
+      "desc": "舞蹈播放（A3；技能资源，Start/Pause/Stop）",
+      "call": {
+        "command": "string=Start Start/Pause/Stop",
+        "path": "string 技能资源路径",
+        "session_id": "string? 会话 ID"
+      },
+      "report": {
+        "skills": "list<{id, name, path, duration}> 技能清单"
+      }
+    },
+    {
+      "type": "motion.advance",
+      "category": "motion",
+      "desc": "动作高级控制（A3；暂停/复位/循环）",
+      "call": {
+        "motion_id": "string 动作资源路径（空=停止）",
+        "pause": "boolean=false",
+        "reset": "boolean=false",
+        "repeat": "boolean=false",
+        "duration_ms": "number=10000 最长运行时间"
+      },
+      "report": {}
+    },
+    {
+      "type": "map.manage",
+      "category": "perception",
+      "desc": "地图管理（A3；RPC 数据源：列表/2D图/拓扑点/实时建图）",
+      "call": {},
+      "report": {
+        "supported": "boolean"
+      }
+    },
+    {
+      "type": "status.emergency",
+      "category": "status",
+      "desc": "急停状态（有线/无线/软件）",
+      "call": {},
+      "report": {
+        "topic": "sensor.emergency 推送通道"
+      }
     }
   ]
 }

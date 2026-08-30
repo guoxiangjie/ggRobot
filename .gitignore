@@ -43,3 +43,7 @@ platform/desktop/resources/sidecar-win/
 
 # 3D 模型源文件（大文件，随 deb/dmg 流转不入库）
 模型文件/
+
+# 厂商 SDK（外部包，不入库；机器人部署时从本地拷 prebuilt）
+agibot_a3_Ultra_aimdk-dev3.2/
+docs/aimdk/

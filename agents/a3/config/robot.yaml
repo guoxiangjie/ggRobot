@@ -1,0 +1,27 @@
+# A3-Ultra agent 配置（env GGROBOT_* 优先）
+
+a3:
+  hdu_host: 10.42.10.10   # agent 部署地 / TTS / 音频 / 资源
+  mdu_host: 10.42.10.12   # 运控 / 动作命令 / 告警（⛔禁部署）
+  adu_host: 10.42.10.11   # 地图 / 导航
+
+velocity:
+  publish_rate: 50        # Hz（官方 walk.py 同款）
+  max_forward: 1.0        # m/s → 比例换算上限（日常行走建议 <1.2）
+  max_lateral: 0.6
+  max_angular: 1.0        # rad/s
+
+rpc:
+  timeout: 3.0
+  query_retries: 2        # 查询类幂等可重试
+  ctrl_retries: 0         # 控制类不重试（TTS/动作盲重发=重复播放）
+
+camera:
+  fps: 5                  # Image→JPEG 推流帧率（Phase C）
+  jpeg_quality: 60
+
+motions:
+  cache_ttl: 300          # 资源清单缓存秒数（GetResourceList 限频友好）
+
+server:
+  port: 8300

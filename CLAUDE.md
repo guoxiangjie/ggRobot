@@ -23,6 +23,15 @@
 ```
 ggRobot/
 ├── agents/x2/                  ← X2 机器人 agent
+│   （目录细节见下）
+├── agents/a3/                  ← A3-Ultra agent（HTTP RPC + Topic 双通道，严禁 apt）
+│   ├── gg_robot/               ← FastAPI + rclpy（骨架复用 X2：server/security/ws 协议层）
+│   │   ├── rpc.py              ← 核心：三单元 RPC 端口表 + 封装（tts/motion/nav/map/dance）
+│   │   ├── node.py             ← 订阅 BMS/急停/TTS/VAD + 50Hz 速度（m/s→比例换算）
+│   │   ├── choreo.py           ← 编排执行器（tts 精确等播完/motion 真实时长/nav/dance）
+│   │   └── routes/             ← 对齐 X2 API 形态 + nav/dance/maps 扩展
+│   ├── deploy/deploy.sh        ← rsync+venv+systemd user 部署（禁 apt，白名单目录）
+│   └── config/robot.yaml       ← 三单元 IP + 速度上限 + 相机清单
 │   ├── gg_robot/               ← FastAPI + rclpy/ROS2（原 1.0 后端演进，纯 API 化）
 │   │   ├── __main__.py         ← 入口：rclpy守护线程 → FastAPI（:8300）
 │   │   ├── server.py           ← 应用工厂（token鉴权 + 会话锁 + CORS）
@@ -146,6 +155,8 @@ make deploy/start  # 开发期调试：rsync 源码 + SSH 前台跑（正式分�
 ```
 
 平台桌面端（M4 后）：`cd platform/desktop && pnpm dev`（自动拉起 platform/server sidecar）。
+
+**A3 机型**（v0.1.0，文档研读见 docs/a3-ultra-dev-notes.md，实机清单 docs/a3-agent-checklist.md）：`make a3-deploy A3_IP=<HDU地址>`（rsync+venv+systemd，严禁 apt）；`make a3-status / a3-log`。A3 速度为比例制（agent 内 m/s→比例换算，上限在 agents/a3/config/robot.yaml）；动作清单=资源服务动态拉取；导航/舞蹈为 A3 独有能力（契约新类型 nav.goto/dance.play 等 6 个，前端编排步骤动态出现）。
 
 **Windows 版**（Mac 交叉打包，无需 Win 电脑）：`make desktop-package-win` —— GitHub Actions（win-sidecar workflow）在 Windows runner 上跑 PyInstaller 出 win sidecar → `gh run download` 拉回 `resources/sidecar-win/` → electron-builder `--win` 交叉出 nsis。远端 `github`（guoxiangjie/ggRobot，gh CLI 已 auth）。Mac/win sidecar 目录分离（`resources/sidecar` / `resources/sidecar-win`），互不覆盖。
 

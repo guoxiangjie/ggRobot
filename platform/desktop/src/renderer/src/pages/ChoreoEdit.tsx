@@ -10,7 +10,7 @@ import {
 } from '@douyinfe/semi-ui'
 import {
   Save, Plus, AudioLines, PersonStanding, Smile, Gauge, Timer,
-  Settings2, Volume2, Film, Sparkles, ZoomIn, ZoomOut,
+  Settings2, Volume2, Film, Sparkles, ZoomIn, ZoomOut, Music, Compass,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from '@/api/toast'
@@ -38,6 +38,18 @@ const STEP_META: Record<string, StepTypeMeta> = {
     { name: 'motion_id', label: '动作名称', kind: 'number', required: true },
     { name: 'area', label: '部位 1左臂/2右臂/3双臂/11全身', kind: 'number', default: 2 },
     { name: 'wait_done', label: '估时等待完成', kind: 'switch', default: true },
+  ] },
+  dance: { label: '舞蹈', icon: '💃', color: '#AB47BC', fields: [
+    { name: 'path', label: '舞蹈资源路径', kind: 'text', required: true },
+    { name: 'wait_done', label: '等完成', kind: 'switch', default: true },
+  ] },
+  nav: { label: '导航到点', icon: '🧭', color: '#00ACC1', fields: [
+    { name: 'map_id', label: '地图 ID', kind: 'text', required: true },
+    { name: 'target_id', label: '导航点 ID', kind: 'number' },
+    { name: 'x', label: '或目标 X(m)', kind: 'number' },
+    { name: 'y', label: '或目标 Y(m)', kind: 'number' },
+    { name: 'angle', label: '朝向 rad', kind: 'number', default: 0 },
+    { name: 'wait_done', label: '等到点', kind: 'switch', default: true },
   ] },
   emoji: { label: '表情', icon: '😊', color: '#E91E63', fields: [
     { name: 'emotion_id', label: '表情 ID', kind: 'number', required: true },
@@ -72,7 +84,7 @@ const STEP_META: Record<string, StepTypeMeta> = {
     ] },
   ] },
 }
-const STEP_ORDER = ['tts', 'motion', 'emoji', 'velocity', 'wait', 'mode', 'volume', 'media', 'linkcraft']
+const STEP_ORDER = ['tts', 'motion', 'dance', 'nav', 'emoji', 'velocity', 'wait', 'mode', 'volume', 'media', 'linkcraft']
 // 选择器隐藏的类型（已有数据仍可显示，只是不能再新增）
 const HIDDEN_TYPES = new Set(['mode', 'volume'])
 
@@ -88,6 +100,8 @@ function defaultDuration(type: string, form: Record<string, unknown>): number {
       return area === 11 ? 3 : 2   // 兜底：全身 3s / 手臂 2s
     }
     case 'wait': case 'velocity': return Number(form.duration) || 2
+    case 'dance': return Number(form.duration) || 30   // 舞蹈普遍较长，弹窗可改
+    case 'nav': return Number(form.duration) || 15
     case 'linkcraft': case 'media': return 5
     default: return 0.5   // 表情等瞬时类
   }
@@ -99,6 +113,7 @@ const stepDur = (s: ChoreoStep): number =>
 const TYPE_ICON: Record<string, LucideIcon> = {
   tts: AudioLines, motion: PersonStanding, emoji: Smile, velocity: Gauge,
   wait: Timer, mode: Settings2, volume: Volume2, media: Film, linkcraft: Sparkles,
+  dance: Music, nav: Compass,
 }
 function TypeIcon({ t, color, size = 18 }: { t: string; color: string; size?: number }): JSX.Element {
   const I = TYPE_ICON[t]
