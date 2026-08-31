@@ -67,6 +67,17 @@ desktop-package-win: win-sidecar-fetch
 # 用法：make a3-deploy A3_IP=<HDU地址>（默认 WiFi IP 需现场查；内网口固定 10.42.10.10）
 A3_IP ?= 10.42.10.10
 
+# A3 agent 安装包（客户端一键装机用；内容：源码+config+requirements+SDK 协议件）
+a3-bundle:
+	rm -rf agents/a3/dist && mkdir -p agents/a3/dist/bundle
+	cp -R agents/a3/gg_robot agents/a3/config agents/a3/requirements.txt agents/a3/dist/bundle/
+	find agents/a3/dist/bundle -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null; true
+	cp agibot_a3_Ultra_aimdk-dev3.2/prebuilt/a3_aimdk-3.2.0-py3-none-any.whl agents/a3/dist/bundle/a3_aimdk.whl
+	cp -R agibot_a3_Ultra_aimdk-dev3.2/prebuilt/ros2_plugin_proto_aarch64 agents/a3/dist/bundle/ros2_plugin_proto
+	tar -czf agents/a3/dist/ggrobot-a3-agent.tar.gz -C agents/a3/dist/bundle .
+	rm -rf agents/a3/dist/bundle
+	@echo "✅ agents/a3/dist/ggrobot-a3-agent.tar.gz（客户端装机时选择此文件）"
+
 a3-deploy:
 	bash agents/a3/deploy/deploy.sh $(A3_IP)
 

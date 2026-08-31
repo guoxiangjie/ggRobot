@@ -62,8 +62,8 @@ export function registerIpc(): void {
   ipcMain.handle('pickDeb', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     const r = await dialog.showOpenDialog(win!, {
-      title: '选择 agent .deb 安装包',
-      filters: [{ name: 'Deb 包', extensions: ['deb'] }],
+      title: '选择 agent 安装包（X2=deb / A3=tar.gz）',
+      filters: [{ name: '安装包', extensions: ['deb', 'gz', 'tgz'] }],
       properties: ['openFile'],
       defaultPath: readSettings().debDir || undefined,
     })

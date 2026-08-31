@@ -1,7 +1,7 @@
-/**A3 一键装机（全新机器人）— SSH 上传 agent（源码+SDK 协议件）+ venv + systemd + 平台配对
+/**A3 一键装机（全新机器人）— 上传安装包(tar.gz) + venv + systemd + 平台配对
 
 与 X2 装机链路（agentInstall.ts，deb+apt）完全不同：A3 严禁 apt，部署 =
-sftp 递归上传 agents/a3 源码 + prebuilt（whl/ros2_plugin_proto）→ 远端 python3.11
+req.debPath = make a3-bundle 产出的安装包；部署 = sftp 上传 → 解压 → 远端 python3.11
 venv 装依赖 → systemd user 自启 + linger → 写 conf（平台签发 token）→ 验证。
 新机/已装机通用（幂等：重装=升级，token 每次重新签发）。
 
@@ -11,7 +11,6 @@ restart/health-poll/done）——前端 Steps 展示零改动。
 
 import { EventEmitter } from 'events'
 import fs from 'fs'
-import path from 'path'
 import { Client } from 'ssh2'
 
 import { InstallRequest, InstallStep } from './agentInstall'
@@ -48,19 +47,6 @@ export class A3Installer extends EventEmitter {
   /**中断（接口对齐 AgentInstaller；A3 链路暂为 no-op——SSH 命令各自带超时）*/
   abort(): void { /* no-op */ }
 
-  /**装机资源根：dev=项目目录；打包版=resources/a3-agent（electron-builder extraResources）*/
-  private assetsRoot(): string {
-    const devRoot = path.resolve(__dirname, '../../../../../../agents/a3')
-    if (fs.existsSync(path.join(devRoot, 'requirements.txt'))) return devRoot
-    // extraResources 布局：resources/a3-agent/{gg_robot,config,requirements.txt,a3_aimdk.whl,ros2_plugin_proto}
-    return path.join(process.resourcesPath ?? '', 'a3-agent')
-  }
-
-  private sdkPrebuilt(): string {
-    const dev = path.resolve(__dirname, '../../../../../../agibot_a3_Ultra_aimdk-dev3.2/prebuilt')
-    if (fs.existsSync(dev)) return dev
-    return path.join(process.resourcesPath ?? '', 'a3-agent')   // 打包版与 agent 资源同根
-  }
 
   async run(req: InstallRequest): Promise<{ ok: boolean; sn?: string; error?: string }> {
     const conn = new Client()
@@ -80,37 +66,29 @@ export class A3Installer extends EventEmitter {
       this.emitStep({ step: 'register', detail: '平台登记设备' })
       const token = await this.registerAtPlatform(sn, req)
 
-      // ── 4. 上传 agent（源码 + SDK 协议件 ~3MB）──
-      this.emitStep({ step: 'upload-deb', detail: '上传 agent 与协议件（~3MB）', progress: 0 })
-      const assets = this.assetsRoot()
-      const prebuilt = this.sdkPrebuilt()
-      await this.exec(conn, `mkdir -p ${A3_REMOTE_DIR}/config`, 8_000)
-      let done = 0
-      const files: Array<[string, string]> = []   // [local, remote]
-      const walk = (localDir: string, rel: string): void => {
-        for (const ent of fs.readdirSync(localDir, { withFileTypes: true })) {
-          if (ent.name === '__pycache__' || ent.name === '.venv' || ent.name === 'deploy') continue
-          const lp = path.join(localDir, ent.name)
-          const rp = `${A3_REMOTE_DIR}/${rel}/${ent.name}`
-          if (ent.isDirectory()) { walk(lp, `${rel}/${ent.name}`) } else files.push([lp, rp])
-        }
+      // ── 4. 上传安装包（单文件 tar.gz，带进度）+ 解压 ──
+      if (!req.debPath || !fs.existsSync(req.debPath)) {
+        throw new Error('请选择 A3 安装包（make a3-bundle 产出的 ggrobot-a3-agent.tar.gz）')
       }
-      walk(path.join(assets, 'gg_robot'), 'gg_robot')
-      walk(path.join(assets, 'config'), 'config')
-      files.push([path.join(assets, 'requirements.txt'), `${A3_REMOTE_DIR}/requirements.txt`])
-      const whl = fs.existsSync(path.join(prebuilt, 'a3_aimdk-3.2.0-py3-none-any.whl'))
-        ? path.join(prebuilt, 'a3_aimdk-3.2.0-py3-none-any.whl')
-        : path.join(this.assetsRoot(), 'a3_aimdk-3.2.0-py3-none-any.whl')   // 打包版：与 agent 资产同根
-      files.push([whl, `${A3_REMOTE_DIR}/a3_aimdk.whl`])
-      const protoDir = fs.existsSync(path.join(prebuilt, 'ros2_plugin_proto_aarch64'))
-        ? path.join(prebuilt, 'ros2_plugin_proto_aarch64')
-        : path.join(this.assetsRoot(), 'ros2_plugin_proto_aarch64')
-      walk(protoDir, 'ros2_plugin_proto')
-      for (const [lp, rp] of files) {
-        await this.exec(conn, `mkdir -p "$(dirname "${rp}")"`, 5_000)
-        await this.upload(conn, lp, rp)
-        done++
-        this.emitStep({ step: 'upload-deb', progress: done / files.length, detail: `上传 ${done}/${files.length}` })
+      this.emitStep({ step: 'upload-deb', detail: '上传安装包', progress: 0 })
+      const size = fs.statSync(req.debPath).size
+      await this.exec(conn, `mkdir -p ${A3_REMOTE_DIR}`, 8_000)
+      await new Promise<void>((resolve, reject) => {
+        conn.sftp((er, sftp) => {
+          if (er) return reject(er)
+          sftp.fastPut(req.debPath!, `${A3_REMOTE_DIR}/agent.tar.gz`, {
+            step: (t: number) => this.emitStep({
+              step: 'upload-deb', progress: Math.min(1, t / size),
+              detail: `上传 ${(t / 1024).toFixed(0)}/${(size / 1024).toFixed(0)} KB` }),
+          }, (e2: unknown) => (e2 ? reject(e2) : resolve()))
+        })
+      })
+      this.emitStep({ step: 'upload-deb', progress: 1, detail: '解压安装包…' })
+      const untar = await this.exec(conn,
+        `cd ${A3_REMOTE_DIR} && tar -xzf agent.tar.gz && ls requirements.txt >/dev/null && echo GG_UNTAR_OK`,
+        60_000)
+      if (!untar.out.includes('GG_UNTAR_OK')) {
+        throw new Error(`解压失败（包结构异常）: ${(untar.err || untar.out).slice(-200)}`)
       }
 
       // ── 5. venv + 依赖（python3.11：Jazzy rclpy 是 3.11 包）──
@@ -187,15 +165,6 @@ export class A3Installer extends EventEmitter {
           clearTimeout(timer)
           resolve({ code: code ?? 0, out, err: errS })
         })
-      })
-    })
-  }
-
-  private upload(conn: Client, local: string, remote: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      conn.sftp((er, sftp) => {
-        if (er) return reject(er)
-        sftp.fastPut(local, remote, (e2) => (e2 ? reject(e2) : resolve()))
       })
     })
   }

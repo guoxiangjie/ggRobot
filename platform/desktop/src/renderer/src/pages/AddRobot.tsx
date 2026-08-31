@@ -77,8 +77,8 @@ export default function AddRobotPage(): JSX.Element {
       <div style={{ padding: '20px 32px 28px', maxWidth: 720, margin: '0 auto' }}>
       <RadioGroup type='button' value={model} onChange={(e) => setModel(e.target.value as 'x2' | 'a3')}
         style={{ marginBottom: 16 }}>
-        <Radio value='x2'>X2（一键装机）</Radio>
-        <Radio value='a3'>A3（快速登记）</Radio>
+        <Radio value='x2'>X2</Radio>
+        <Radio value='a3'>A3</Radio>
       </RadioGroup>
 
       {model === 'a3' ? (
@@ -101,6 +101,17 @@ export default function AddRobotPage(): JSX.Element {
           <div>
             <Typography.Text type="tertiary" size="small">别名（可选）</Typography.Text>
             <Input value={name} onChange={setName} placeholder="展厅 A3-1号" />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Typography.Text type="tertiary" size="small">A3 安装包（make a3-bundle 产出的 ggrobot-a3-agent.tar.gz）</Typography.Text>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input value={debPath} onChange={setDebPath} placeholder="agents/a3/dist/ggrobot-a3-agent.tar.gz" />
+              <Button disabled={!window.desktop} icon={<PackagePlus size={14} />}
+                onClick={async () => {
+                  const p = await window.desktop.pickDeb()
+                  if (p) setDebPath(p)
+                }}>选择</Button>
+            </div>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <Button theme="solid" size="large" loading={running} onClick={() => void start()}>
