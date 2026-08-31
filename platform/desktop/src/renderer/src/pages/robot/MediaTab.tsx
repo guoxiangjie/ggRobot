@@ -7,6 +7,7 @@ import { FolderUp, Play, Trash2, RefreshCw, FileVideo, FileAudio } from 'lucide-
 import { makeAgentClient } from '@/api/agent'
 import { toast } from '@/api/toast'
 import { useRobot } from './RobotLayout'
+import { Empty } from '@douyinfe/semi-ui'
 
 interface MediaFile { name: string; size: number; kind: 'audio' | 'video'; ext: string }
 
@@ -17,6 +18,14 @@ function fmtSize(bytes: number): string {
 }
 
 export default function MediaTab(): JSX.Element {
+  const { isA3 } = useRobot()
+  if (isA3) {
+    return <Empty title="A3 机型暂不提供此功能" description="A3 表情/媒体走资源体系（v2）；灵创为 X2 专属" style={{ padding: 80 }} />
+  }
+  return <X2MediaTab />
+}
+
+function X2MediaTab(): JSX.Element {
   const { ip, token } = useRobot()
   const http = useRef(makeAgentClient(ip, token)).current
 

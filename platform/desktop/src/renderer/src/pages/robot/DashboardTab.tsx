@@ -6,8 +6,16 @@ import { BatteryCharging, Compass, Activity } from 'lucide-react'
 import { AgentWsClient, type SensorData } from '@/api/agentWs'
 import { agentWsUrl } from '@/api/agent'
 import { useRobot } from './RobotLayout'
+import A3Dashboard from './a3/A3Dashboard'
 
 export default function DashboardTab(): JSX.Element {
+  const { isA3 } = useRobot()
+  if (isA3) return <A3Dashboard />
+  return <X2Dashboard />
+}
+
+function X2Dashboard(): JSX.Element {
+
   const { ip, token } = useRobot()
   const [sensor, setSensor] = useState<SensorData | null>(null)
   const [status, setStatus] = useState<'open' | 'closed' | 'connecting'>('connecting')

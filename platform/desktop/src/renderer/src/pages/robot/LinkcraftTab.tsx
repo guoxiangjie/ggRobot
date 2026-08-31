@@ -7,6 +7,7 @@ import { Sparkles, Play, RefreshCw } from 'lucide-react'
 import { makeAgentClient } from '@/api/agent'
 import { toast } from '@/api/toast'
 import { useRobot } from './RobotLayout'
+import { Empty } from '@douyinfe/semi-ui'
 
 interface RobotResource { resource_key: string; name: string; version: string; type?: string }
 
@@ -16,6 +17,14 @@ function rType(r: RobotResource): 'BODY' | 'ARM' {
 }
 
 export default function LinkcraftTab(): JSX.Element {
+  const { isA3 } = useRobot()
+  if (isA3) {
+    return <Empty title="A3 机型暂不提供此功能" description="A3 表情/媒体走资源体系（v2）；灵创为 X2 专属" style={{ padding: 80 }} />
+  }
+  return <X2LinkcraftTab />
+}
+
+function X2LinkcraftTab(): JSX.Element {
   const { ip, token } = useRobot()
   const http = useRef(makeAgentClient(ip, token)).current
 

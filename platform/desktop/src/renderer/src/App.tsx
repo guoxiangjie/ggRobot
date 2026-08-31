@@ -22,6 +22,7 @@ import ChoreoEditPage from '@/pages/ChoreoEdit'
 import AddRobotPage from '@/pages/AddRobot'
 import RobotLayout from '@/pages/robot/RobotLayout'
 import DashboardTab from '@/pages/robot/DashboardTab'
+import NavTab from '@/pages/robot/a3/NavTab'
 import ControlTab from '@/pages/robot/ControlTab'
 import CameraTab from '@/pages/robot/CameraTab'
 import VoiceTab from '@/pages/robot/VoiceTab'
@@ -138,6 +139,7 @@ export default function App(): JSX.Element {
               <Route path=":id" element={<RobotLayout />}>
                 <Route index element={<DashboardTab />} />
                 <Route path="dashboard" element={<DashboardTab />} />
+          <Route path="nav" element={<NavTab />} />
                 <Route path="control" element={<ControlTab />} />
                 <Route path="camera" element={<CameraTab />} />
                 <Route path="voice" element={<VoiceTab />} />

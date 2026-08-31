@@ -6,10 +6,19 @@ import { Smile } from 'lucide-react'
 import { makeAgentClient } from '@/api/agent'
 import { toast } from '@/api/toast'
 import { useRobot } from './RobotLayout'
+import { Empty } from '@douyinfe/semi-ui'
 
 interface Emotion { id: number; name: string }
 
 export default function EmojiTab(): JSX.Element {
+  const { isA3 } = useRobot()
+  if (isA3) {
+    return <Empty title="A3 机型暂不提供此功能" description="A3 表情/媒体走资源体系（v2）；灵创为 X2 专属" style={{ padding: 80 }} />
+  }
+  return <X2EmojiTab />
+}
+
+function X2EmojiTab(): JSX.Element {
   const { ip, token, capsOf } = useRobot()
   const http = useRef(makeAgentClient(ip, token)).current
   const emotions = ((capsOf('expression.face')?.params.emotions ?? []) as Emotion[])

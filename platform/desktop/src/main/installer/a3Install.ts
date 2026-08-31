@@ -98,7 +98,7 @@ export class A3Installer extends EventEmitter {
         `{ [ -x venv/bin/python ] && venv/bin/python --version 2>&1 | grep -q 'Python 3.11' || rm -rf venv; } && ` +
         `[ -x venv/bin/python ] || python3.11 -m venv venv; ` +
         `./venv/bin/pip install -q -r requirements.txt -i ${PIP_MIRROR} && ` +
-        `./venv/bin/pip install -q --force-reinstall ./a3_aimdk.whl && echo GG_OK`,
+        `./venv/bin/pip install -q --force-reinstall ./a3_aimdk-3.2.0-py3-none-any.whl && echo GG_OK`,
         420_000)
       if (!inst.out.includes('GG_OK')) {
         throw new Error(`依赖安装失败: ${(inst.err || inst.out).slice(-300)}`)
@@ -178,31 +178,16 @@ export class A3Installer extends EventEmitter {
     })
   }
 
+  /** 平台登记换 token（pair/register：upsert by SN，记 IP；X2 同款） */
   private async registerAtPlatform(sn: string, req: InstallRequest): Promise<string> {
-    const r = await fetch(`http://127.0.0.1:${req.platformPort}/api/robots`, {
+    const reg = await fetch(`http://127.0.0.1:${req.platformPort}/api/pair/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sn, name: req.name || undefined, model: 'a3-ultra', port: 8300 }),
+      body: JSON.stringify({ sn, ip: req.host, name: req.name, model: 'a3-ultra' }),
       signal: AbortSignal.timeout(5000),
     })
-    if (r.status === 409) {   // 已登记 → 换新 token（重装=重新配对）
-      const list = await (await fetch(`http://127.0.0.1:${req.platformPort}/api/robots`,
-        { signal: AbortSignal.timeout(5000) })).json() as { robots?: Array<{ id: string; sn: string }> }
-      const exist = list.robots?.find((x) => x.sn === sn)
-      if (!exist) throw new Error('登记冲突但未找到原记录')
-      const rot = await (await fetch(`http://127.0.0.1:${req.platformPort}/api/robots/${exist.id}/token-rotate`,
-        { method: 'POST', signal: AbortSignal.timeout(5000) })).json() as { token?: string }
-      if (!rot.token) throw new Error('token 轮换失败')
-      if (req.name) {
-        await fetch(`http://127.0.0.1:${req.platformPort}/api/robots/${exist.id}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: req.name }), signal: AbortSignal.timeout(5000),
-        }).catch(() => { /* 改名失败无妨 */ })
-      }
-      return rot.token
-    }
-    if (!r.ok) throw new Error(`平台登记失败 HTTP ${r.status}`)
-    const j = await r.json() as { token?: string }
+    if (!reg.ok) throw new Error(`平台登记失败 ${reg.status}`)
+    const j = (await reg.json()) as { token?: string }
     if (!j.token) throw new Error('平台未返回 token')
     return j.token
   }

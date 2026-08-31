@@ -10,6 +10,8 @@ interface RobotCtx {
   ip: string
   token: string
   name: string
+  model: string                      // 机型（x2 / a3-ultra / …）—— Tab 装配与页面分支依据
+  isA3: boolean
   caps: Capabilities | null
   capsOf: (type: string) => { type: string; params: Record<string, unknown> } | undefined
 }
@@ -24,6 +26,8 @@ export function useRobot(): RobotCtx {
 export default function RobotLayout(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const [info, setInfo] = useState<{ ip: string; token: string; name: string } | null>(null)
+  // A3 agent 部署后 health.model=a3-ultra；登记信息里也可能带（caps 拉不到时兜底用 platform 的 model 字段）
+  const [platModel, setPlatModel] = useState('')
   const [caps, setCaps] = useState<Capabilities | null>(null)
   const [error, setError] = useState('')
 
@@ -34,6 +38,7 @@ export default function RobotLayout(): JSX.Element {
         const { data } = await platformApi().get(`/api/robots/${id}`)
         if (!alive) return
         if (!data.last_ip) { setError('该机器人无 IP 记录（装机未完成）') ; return }
+        setPlatModel(String(data.model || ''))
         setInfo({ ip: data.last_ip, token: data.token, name: data.name })
         // 能力契约（离线则空——页面降级）
         try {
@@ -48,10 +53,12 @@ export default function RobotLayout(): JSX.Element {
     return () => { alive = false }
   }, [id])
 
+  const model = caps?.model || platModel || 'x2'
+  const isA3 = model.startsWith('a3')
   const ctx = useMemo<RobotCtx | null>(() => info && ({
-    ...info, caps,
+    ...info, model, isA3, caps,
     capsOf: (t) => caps?.capabilities.find((c) => c.type === t),
-  }), [info, caps])
+  }), [info, caps, model, isA3])
 
   if (error) {
     return <Empty title="无法打开" description={error} style={{ padding: 60 }} />
@@ -78,7 +85,15 @@ export default function RobotLayout(): JSX.Element {
         )}
 
         <div className="robot-tabs">
-          {[
+          {(isA3 ? [
+            // A3：按机型差异化装配（导航为独有能力；表情/媒体/灵创走资源体系，v2 再上）
+            { to: 'dashboard', label: '仪表盘' },
+            { to: 'control', label: '动作' },
+            { to: 'nav', label: '导航' },
+            { to: 'camera', label: '相机' },
+            { to: 'voice', label: '语音' },
+            { to: 'system', label: '系统' },
+          ] : [
             { to: 'dashboard', label: '仪表盘' },
             { to: 'control', label: '控制' },
             { to: 'camera', label: '相机' },
@@ -87,7 +102,7 @@ export default function RobotLayout(): JSX.Element {
             { to: 'media', label: '媒体' },
             { to: 'linkcraft', label: '灵创' },
             { to: 'system', label: '系统' },
-          ].map((t) => (
+          ]).map((t) => (
             <NavLink key={t.to} to={t.to}
               className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
               {t.label}

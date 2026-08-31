@@ -13,6 +13,7 @@ import nipplejs from 'nipplejs'
 import { AgentWsClient } from '@/api/agentWs'
 import { agentWsUrl, makeAgentClient } from '@/api/agent'
 import { useRobot } from './RobotLayout'
+import A3MotionTab from './a3/A3MotionTab'
 
 interface MotionAction { id: string; name: string; area: number; requires_stand: boolean }
 interface ModeItem { id: string; name: string; numeric_value?: number }
@@ -26,6 +27,12 @@ const KEY_HINT: Record<string, string> = {
 }
 
 export default function ControlTab(): JSX.Element {
+  const { isA3 } = useRobot()
+  if (isA3) return <A3MotionTab />
+  return <X2ControlTab />
+}
+
+function X2ControlTab(): JSX.Element {
   const { ip, token, capsOf } = useRobot()
   const http = useRef(makeAgentClient(ip, token)).current
 

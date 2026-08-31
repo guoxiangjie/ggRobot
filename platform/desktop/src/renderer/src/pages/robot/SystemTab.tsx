@@ -6,6 +6,7 @@ import { Cpu, ShieldAlert } from 'lucide-react'
 import { makeAgentClient } from '@/api/agent'
 import { toast } from '@/api/toast'
 import { useRobot } from './RobotLayout'
+import A3SystemTab from './a3/A3SystemTab'
 
 interface SysInfo { action: { desc: string; status: number } | null; system: { state: string; status: number } | null }
 
@@ -16,6 +17,12 @@ const STATE_LABEL: Record<string, string> = {
 }
 
 export default function SystemTab(): JSX.Element {
+  const { isA3 } = useRobot()
+  if (isA3) return <A3SystemTab />
+  return <X2SystemTab />
+}
+
+function X2SystemTab(): JSX.Element {
   const { ip, token, capsOf } = useRobot()
   const http = useRef(makeAgentClient(ip, token)).current
   const migrateStates = ((capsOf('status.system')?.params.migrate_states ?? []) as string[])
