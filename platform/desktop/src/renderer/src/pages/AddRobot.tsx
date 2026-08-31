@@ -3,7 +3,7 @@ import { toast } from '@/api/toast'
    agent 已运行时自动走快速配对（无需 deb）。装机中途关窗自动 abort。*/
 
 import { useEffect, useRef, useState } from 'react'
-import { Button, Input, Typography, Steps, Progress, Banner } from '@douyinfe/semi-ui'
+import { Button, Input, Typography, Steps, Progress, Banner, RadioGroup, Radio } from '@douyinfe/semi-ui'
 import { PackagePlus } from 'lucide-react'
 import { useAppStore } from '@/stores/app'
 import type { InstallProgress } from '../../../preload/index'
@@ -13,9 +13,9 @@ const STEP_DEFS: { key: string; label: string }[] = [
   { key: 'read-sn', label: '读取 SN' },
   { key: 'register', label: '平台登记' },
   { key: 'stop-legacy', label: '停 1.0 服务' },
-  { key: 'upload-deb', label: '推送安装包' },
+  { key: 'upload-deb', label: '上传 Agent' },
   { key: 'upload-token', label: '下发配对令牌' },
-  { key: 'install', label: '安装（apt + systemd）' },
+  { key: 'install', label: '安装依赖' },
   { key: 'restart', label: '重启服务' },
   { key: 'health-poll', label: '就绪验证' },
   { key: 'done', label: '完成' },
@@ -24,11 +24,13 @@ const STEP_DEFS: { key: string; label: string }[] = [
 export default function AddRobotPage(): JSX.Element {
   const { port } = useAppStore()
 
+  const [model, setModel] = useState<'x2' | 'a3'>('x2')
   const [host, setHost] = useState('10.10.4.175')
   const [username, setUsername] = useState('agi')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [debPath, setDebPath] = useState('')
+  // A3：agent 已由部署脚本装好（make a3-deploy），走 SSH 快速配对（平台签发 token 写 conf + 重启）
 
   const [running, setRunning] = useState(false)
   const [steps, setSteps] = useState<Record<string, InstallProgress>>({})
@@ -59,6 +61,7 @@ export default function AddRobotPage(): JSX.Element {
     setSteps({})
     const { jobId } = await window.desktop.installAgent({
       host, username, password, debPath: dp, name, platformPort: port,
+      model,
     })
     jobIdRef.current = jobId
   }
@@ -72,6 +75,41 @@ export default function AddRobotPage(): JSX.Element {
         <span className="title">添加机器人（装机向导）</span>
       </div>
       <div style={{ padding: '20px 32px 28px', maxWidth: 720, margin: '0 auto' }}>
+      <RadioGroup type='button' value={model} onChange={(e) => setModel(e.target.value as 'x2' | 'a3')}
+        style={{ marginBottom: 16 }}>
+        <Radio value='x2'>X2（一键装机）</Radio>
+        <Radio value='a3'>A3（快速登记）</Radio>
+      </RadioGroup>
+
+      {model === 'a3' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Typography.Text type="tertiary" size="small" style={{ gridColumn: '1 / -1' }}>
+            全新机器人一键部署：SSH 连接 → 读 SN → 平台登记 → 上传 agent（源码+协议件）→ venv 安装 → systemd 自启 → 配对验证（已装机重跑=升级，幂等）
+          </Typography.Text>
+          <div>
+            <Typography.Text type="tertiary" size="small">机器人 IP</Typography.Text>
+            <Input value={host} onChange={setHost} placeholder="10.10.4.26" />
+          </div>
+          <div>
+            <Typography.Text type="tertiary" size="small">SSH 用户名</Typography.Text>
+            <Input value={username} onChange={setUsername} placeholder="agi" />
+          </div>
+          <div>
+            <Typography.Text type="tertiary" size="small">SSH 密码</Typography.Text>
+            <Input mode="password" value={password} onChange={setPassword} placeholder="agi 账号密码" />
+          </div>
+          <div>
+            <Typography.Text type="tertiary" size="small">别名（可选）</Typography.Text>
+            <Input value={name} onChange={setName} placeholder="展厅 A3-1号" />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Button theme="solid" size="large" loading={running} onClick={() => void start()}>
+              一键装机
+            </Button>
+          </div>
+        </div>
+      ) : (
+      <>
       <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 16 }}>
         一键装机：SSH 推 deb → 免密 apt 安装 → systemd 常驻 → 自动配对；机器人上已有 agent 时自动走快速配对（秒级）
       </Typography.Text>
@@ -115,6 +153,9 @@ export default function AddRobotPage(): JSX.Element {
           <Button size="large" onClick={() => window.close()}>完成</Button>
         )}
       </div>
+
+      </>
+      )}
 
       {(running || done) && (
         <div style={{ marginTop: 14, maxHeight: 360, overflow: 'auto' }}>

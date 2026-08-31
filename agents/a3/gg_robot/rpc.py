@@ -22,6 +22,7 @@ UNITS = {
     "hdu": (config.HDU_HOST, 59301),   # AgentControl / TTS
     "hdu_audio": (config.HDU_HOST, 56666),   # HalAudio（音量/麦克风源/文件播放）
     "hdu_resource": (config.HDU_HOST, 51049),  # Resource（动作/表情/音频资源）
+    "hdu_camera": (config.HDU_HOST, 56430),   # HalCameraService（TakeShot 截图；实机扫描发现，文档未载）
     "mdu": (config.MDU_HOST, 56322),   # MotionControlAction（状态机）
     "mdu_motion": (config.MDU_HOST, 56444),  # MotionCommand（动作播放）
     "mdu_hds": (config.MDU_HOST, 50587),   # HDS 告警
@@ -100,6 +101,23 @@ def call(unit: str, service: str, method: str, payload: dict | None = None,
         except ValueError as e:  # json 解析失败
             raise RpcError(f"bad json: {e}", url=url) from e
     raise RpcError(f"unreachable: {last_err}", url=url)
+
+
+# ── 相机截图（TakeShot；PNG base64）─────────────────────
+
+# 实机在线相机名（TakeShot 用短名，非话题全名；2026-08-31 验证）
+SHOT_CAMERAS = {"right_fisheye": "right_fisheye_camera", "left_fisheye": "left_fisheye_camera"}
+
+
+def take_shot(camera: str = "right_fisheye_camera") -> bytes:
+    """单相机截图 → PNG bytes。⚠️ 单张 ~2.5MB，仅在有人看相机时调用（按需轮询）"""
+    import base64
+    r = call("hdu_camera", "aimdk.protocol.HalCameraService", "TakeShot",
+             {"camera_name": [camera]}, timeout=8.0)
+    shots = r.get("camera_shot") or []
+    if not shots:
+        raise RpcError(f"no shot from {camera}", url="TakeShot")
+    return base64.b64decode(shots[0].get("data", ""))
 
 
 # ── 常用封装（供 routes / node 直接调）─────────────────────

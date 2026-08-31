@@ -21,6 +21,7 @@ const api = {
 
   installAgent: (req: {
     host: string; username: string; password: string; debPath: string; name: string; platformPort: number
+    model?: 'x2' | 'a3'
   }): Promise<{ jobId: string }> => ipcRenderer.invoke('installAgent', req),
 
   installAbort: (jobId: string): Promise<boolean> => ipcRenderer.invoke('installAbort', jobId),

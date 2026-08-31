@@ -87,20 +87,17 @@ RPC_TIMEOUT = float(_get("rpc.timeout", 3.0))
 RPC_QUERY_RETRIES = int(_get("rpc.query_retries", 2))   # 查询类（幂等）可重试
 RPC_CTRL_RETRIES = int(_get("rpc.ctrl_retries", 0))     # 控制类（非幂等：TTS/动作）不重试
 
-# ── 相机（Phase C：sensor_msgs/Image → JPEG 推流）──
-# ⚠️ raw Image 30FPS≈265MB/s DDS 流量，常订阅疑似触发内部通信告警（实机验证中）；
-#    默认关闭，前端打开相机页时再经 API 显式开启（camera.enable=true 供调试）
-CAMERA_ENABLED = bool(_get("camera.enable", False))
-CAMERA_FPS = int(_get("camera.fps", 5))
+# ── 相机 ──
+# ⛔ 实机教训：raw Image 话题订阅（≈265MB/s DDS 流）会触发内部通信告警 A3531001，
+#    topic 模式永久禁用。正解 = TakeShot RPC 按需轮询（仅前端开相机页才拉，PNG→JPEG 转码推 WS）。
+CAMERA_MODE = str(_get("camera.mode", "shot"))     # shot=TakeShot 轮询（唯一推荐）
+CAMERA_FPS = float(_get("camera.fps", 1))          # 截图轮询帧率（1fps 足够 UI；限频友好）
 CAMERA_JPEG_QUALITY = int(_get("camera.jpeg_quality", 60))
+CAMERA_MAX_WIDTH = int(_get("camera.max_width", 800))
+# 实机在线相机（TakeShot 短名；2026-08-31 验证，仅鱼眼两路有输出）
 CAMERA_LIST = (
-    ("head_stereo_left", "/hal/head_stereo_left_fisheye_camera/rgb", "头部双目·左"),
-    ("head_stereo_right", "/hal/head_stereo_right_fisheye_camera/rgb", "头部双目·右"),
-    ("chest_front", "/hal/chest_front_d457_camera/rgb", "胸前深度"),
-    ("waist_front", "/hal/waist_front_d415_camera/rgb", "腰部前向"),
-    ("head_left", "/hal/head_left_fisheye_camera/rgb", "头部左鱼眼"),
-    ("head_right", "/hal/head_right_fisheye_camera/rgb", "头部右鱼眼"),
-    ("head_rear", "/hal/head_rear_fisheye_camera/rgb", "头部后鱼眼"),
+    ("right_fisheye", "right_fisheye_camera", "头部右鱼眼"),
+    ("left_fisheye", "left_fisheye_camera", "头部左鱼眼"),
 )
 
 # ── 订阅开关矩阵（A3531001 排查二分法：默认全关最小模式，逐项打开定位元凶）──

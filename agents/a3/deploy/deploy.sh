@@ -29,12 +29,16 @@ $SSH "cd $REMOTE_DIR && \
   ./venv/bin/pip install -q -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
   ./venv/bin/pip install -q --force-reinstall ./a3_aimdk-3.2.0-py3-none-any.whl"
 
-echo "📦 [4/6] 写配对 conf（token 永不覆盖）"
+echo "📦 [4/6] 写配对 conf（token 永不覆盖；SN 自动从 /agibot/info/sn 读取）"
 $SSH "mkdir -p ~/.config && \
+  AUTO_SN=\$(cat /agibot/info/sn 2>/dev/null || echo '') && \
+  USE_SN='\${SN:-\$AUTO_SN}' && \
   if [ -f ~/.config/ggrobot-agent.conf ]; then \
-    echo '  conf 已存在，跳过（如需重配删掉它）'; \
+    sed -i \"s/^sn=.*/sn=\$USE_SN/\" ~/.config/ggrobot-agent.conf; \
+    sed -i \"s/^sn=\$/sn=\$USE_SN/\" ~/.config/ggrobot-agent.conf; \
+    echo '  conf 已存在，SN 已刷新（token 保留）'; \
   else \
-    printf 'token=%s\nsn=%s\nmodel=a3-ultra\nport=8300\n' '$TOKEN' '$SN' > ~/.config/ggrobot-agent.conf; \
+    printf 'token=%s\nsn=%s\nmodel=a3-ultra\nport=8300\n' '$TOKEN' '\$USE_SN' > ~/.config/ggrobot-agent.conf; \
   fi && cat ~/.config/ggrobot-agent.conf | head -2 | sed 's/token=.*/token=***/'"
 
 echo "📦 [5/6] systemd user 自启 + linger（开机不登录也跑）"

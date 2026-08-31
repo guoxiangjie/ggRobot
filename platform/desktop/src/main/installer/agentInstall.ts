@@ -16,7 +16,9 @@ export interface InstallRequest {
   debPath: string    // 本地 deb 路径
   name: string       // 机器人别名（登记用）
   platformPort: number  // 平台 sidecar 端口（登记换 token）
+  model?: 'x2' | 'a3'
 }
+
 
 export interface InstallStep {
   step: 'connect' | 'pc3-setup' | 'read-sn' | 'register' | 'stop-legacy' | 'upload-deb' | 'upload-token'
@@ -130,7 +132,7 @@ export class AgentInstaller extends EventEmitter {
   }
 
   /** agent 已安装且存活时的轻量配对：register → SSH 直写 conf → systemctl --user restart */
-  private async runLight(req: InstallRequest, health: { sn: string }): Promise<{ ok: boolean; sn?: string; error?: string }> {
+  private async runLight(req: InstallRequest, health: { sn: string; model?: string }): Promise<{ ok: boolean; sn?: string; error?: string }> {
     const conn = new Client()
     try {
       await this.connect(conn, req)
@@ -139,7 +141,8 @@ export class AgentInstaller extends EventEmitter {
       // SN：优先实时读（bash -ic AGIBOT_SN），失败用 health 上报值
       let sn = health.sn
       if (sn === 'unpaired' || !sn) {
-        const out = await this.exec(conn, `bash -ic 'echo $AGIBOT_SN' 2>/dev/null; tr -d '\\0' < /proc/device-tree/serial-number 2>/dev/null; true`, 10_000)
+        const out = await this.exec(conn,
+          `cat /agibot/info/sn 2>/dev/null; bash -ic 'echo $AGIBOT_SN' 2>/dev/null; tr -d '\\0' < /proc/device-tree/serial-number 2>/dev/null; true`, 10_000)
         sn = out.out.split('\n').map((l) => l.trim().replace(/\0/g, '')).find((v) => v && !v.startsWith('$') && v.length >= 6) ?? sn
       }
       this.emitStep({ step: 'read-sn', detail: `SN = ${sn}` })
@@ -149,14 +152,16 @@ export class AgentInstaller extends EventEmitter {
 
       // SSH 直写 conf（agi 域 ~/.config/ggrobot-agent.conf — 无需 root）
       this.emitStep({ step: 'upload-token', detail: '写入配对令牌' })
-      const conf = `token=${token}\nsn=${sn}\nmodel=x2\nport=8300\n`
+      const isA3 = req.model === 'a3' || health.model?.startsWith('a3')
+      const conf = `token=${token}\nsn=${sn}\nmodel=${isA3 ? 'a3-ultra' : 'x2'}\nport=8300\n`
       await this.exec(conn, 'mkdir -p ~/.config', 5000)
       await this.writeRemoteFile(conn, '/home/agi/.config/ggrobot-agent.conf', conf)
 
       // agi 自己的 user 服务自己重启（无 sudo）
-      this.emitStep({ step: 'restart', detail: '重启 agent 服务' })
+      const svc = isA3 ? 'ggrobot-a3' : 'ggrobot-agent'
+      this.emitStep({ step: 'restart', detail: `重启 agent 服务（${svc}）` })
       const r = await this.exec(conn,
-        `export XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}; systemctl --user restart ggrobot-agent`, 20_000)
+        `export XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}; systemctl --user restart ${svc}`, 20_000)
       if (r.code !== 0) throw new Error(`服务重启失败: ${r.err.slice(-200)}`)
       conn.end()
 
@@ -253,12 +258,12 @@ export class AgentInstaller extends EventEmitter {
   }
 
   /** 预探测 agent 是否存活（health 免 token） */
-  private async probeAgent(host: string): Promise<{ sn: string } | null> {
+  private async probeAgent(host: string): Promise<{ sn: string; model?: string } | null> {
     try {
-      const r = await fetch(`http://${host}:8300/api/health`, { signal: AbortSignal.timeout(1500) })
+      const r = await fetch(`http://${host}:8300/api/health`, { signal: AbortSignal.timeout(5000) })
       if (r.ok) {
-        const j = (await r.json()) as { sn?: string }
-        if (j.sn) return { sn: j.sn }
+        const j = (await r.json()) as { sn?: string; model?: string }
+        if (j.sn) return { sn: j.sn, model: j.model }
       }
     } catch { /* 不在跑 */ }
     return null

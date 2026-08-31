@@ -174,46 +174,38 @@ async def sensor_pusher(interval: float = 0.2):
             )
 
 
-async def camera_pusher(interval: float = 0.1):
-    """每 100ms 推送活跃相机 JPEG 帧（topic: cam.{camera_id}，订阅 cam.* 命中）"""
-    _no_frame_since: float = 0.0  # 首次进入不告警，等首帧出现后再计时
-    _warned = False
 
+def _wants_cam(c: "Client") -> bool:
+    return any(t == "cam.*" or t.startswith("cam.") for t in c.topics)
+
+async def camera_pusher(interval: float = 1.0):
+    """相机帧推送（TakeShot 按需轮询版）
+
+    ⛔ raw 话题订阅（265MB/s DDS 流）会触发内部通信告警 A3531001（实机教训），
+    改为 HTTP 截图：仅当有 WS 客户端订阅 cam.* 时才拉 TakeShot（1fps，限频友好），
+    PNG→JPEG 转码后按订阅推送二进制帧（4B 时间戳 + JPEG）。
+    """
+    _busy = False
     while True:
         await asyncio.sleep(interval)
-        if not _clients:
-            _no_frame_since = 0.0
-            _warned = False
+        if _busy:
             continue
-
+        has_viewer = any(c.subscribed("cam.anything") or _wants_cam(c) for c in _clients)
+        if not has_viewer:
+            continue
         from .. import node as node_mod
         _node = node_mod._node
         if _node is None:
             continue
-
-        frame = _node.get_camera_frame()
-        if frame is None:
-            now = time.time()
-            if _no_frame_since == 0.0:
-                # 检查后端是否已经收到过帧（_camera_last_ts > 0 表示曾经收到过）
-                if _node._camera_last_ts > 0:
-                    _no_frame_since = now  # 曾经有帧但现在没了，开始计时
-            elif now - _no_frame_since > 5.0 and not _warned:
-                logger.warning(
-                    f"📷 相机帧推送中断 {now - _no_frame_since:.0f}s！"
-                    f"活跃相机={_node._active_camera}, "
-                    f"总收帧={_node._camera_frame_count}"
-                )
-                _warned = True
-            continue
-
-        _no_frame_since = 0.0
-        _warned = False
-
+        _busy = True
         try:
-            await publish_frame(f"cam.{_node._active_camera or 'default'}", frame)
+            frame = await asyncio.to_thread(_node.shot_jpeg)
+            if frame:
+                await publish_frame(f"cam.{_node._active_camera or 'right_fisheye_camera'}", frame)
         except Exception:
             pass
+        finally:
+            _busy = False
 
 
 async def cloud_pusher(interval: float = 0.5):

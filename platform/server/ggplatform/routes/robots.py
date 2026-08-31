@@ -20,6 +20,7 @@ class RobotCreate(BaseModel):
     name: str = ""
     model: str = "x2"
     port: int = 8300
+    token: str = ""   # 非空=沿用机上已有 token（A3 快速登记：agent 已配好对）
 
 
 class RobotPatch(BaseModel):
@@ -80,7 +81,7 @@ async def create_robot(req: RobotCreate):
         if exist:
             raise HTTPException(409, f"SN 已登记: {req.sn}")
         rb = Robot(sn=req.sn, name=req.name or req.sn, model=req.model,
-                   token=secrets.token_urlsafe(24), port=req.port)
+                   token=req.token or secrets.token_urlsafe(24), port=req.port)
         s.add(rb)
         s.commit()
         s.refresh(rb)

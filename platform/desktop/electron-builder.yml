@@ -11,6 +11,14 @@ extraResources:
   # 内置 ASR 模型（paraformer-small int8，装完即用的默认转写档；两平台共用）
   - from: resources/asr
     to: asr
+  # A3 一键装机资产：agent 源码 + SDK 协议件（whl/ros2_plugin_proto；A3Installer 上传用）
+  - from: ../agents/a3
+    to: a3-agent
+    filter: ['**', '!deploy', '!tests', '!__pycache__']
+  - from: ../agibot_a3_Ultra_aimdk-dev3.2/prebuilt/a3_aimdk-3.2.0-py3-none-any.whl
+    to: a3-agent/a3_aimdk-3.2.0-py3-none-any.whl
+  - from: ../agibot_a3_Ultra_aimdk-dev3.2/prebuilt/ros2_plugin_proto_aarch64
+    to: a3-agent/ros2_plugin_proto_aarch64
 asarUnpack:
   - "**/*.node"
 mac:

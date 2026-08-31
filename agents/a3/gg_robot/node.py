@@ -27,7 +27,6 @@ try:
     # 以官方 examples/other/bms.py 等为准；2026-08-31 实机核对）
     from aimdk.protocol.hal.bms.hal_bms_channel_pb2 import BmsStateChannel  # type: ignore
     from aimdk.protocol.hal.state.hal_state_channel_pb2 import EmergencyStateChannel  # type: ignore
-    from aimdk.protocol.agent.agent_data_pb2 import ProcessedAudioOutput  # type: ignore
     _pb2 = True
 except Exception:  # noqa: BLE001 —— whl 未装/不在机上是部署态常态
     logger.warning("⚠️ a3_aimdk pb 导入失败：BMS/急停/VAD 音频降级 None")
@@ -103,16 +102,10 @@ class A3Node:
         self._qos_sensor = qos
         self._create_sensor_subs(qos)
         self._create_velocity_publisher(qos)
-        # 相机订阅保活（0.5s 检查；切换相机后由 _ensure_camera_sub 重建）
-        self.node.create_timer(0.5, self._ensure_camera_sub)
 
-        # ── 相机（按需订阅活跃路 /rgb → JPEG，Phase C）──
-        self._camera_frames: dict[str, tuple[bytes, float]] = {}
+        # ── 相机（TakeShot 按需模式：raw 话题订阅已禁——265MB/s 触发 A3531001，实机教训）──
         self._active_camera: str | None = None
         self._camera_frame_count = 0
-        self._camera_last_ts = 0.0
-        self._camera_sub = None
-        self._camera_sub_topic = ""
         self._auto_select_camera()
         self.slam_mapping = False
 
@@ -166,8 +159,7 @@ class A3Node:
             # VAD 降噪音频（only_voice 模式持续输出；normal 模式唤醒词激活）
             sub_r("/agent/process_audio_output/pb_3Aaimdk_2Eprotocol_2EProcessedAudioOutput", self._on_mic)
         on = [k for k, v in dict(arm=cfg.SUBS_ARM, bms=cfg.SUBS_BMS, emergency=cfg.SUBS_EMERGENCY,
-                                 tts=cfg.SUBS_TTS_STATUS, audio=cfg.SUBS_AUDIO,
-                                 camera=cfg.CAMERA_ENABLED).items() if v]
+                                 tts=cfg.SUBS_TTS_STATUS, audio=cfg.SUBS_AUDIO).items() if v]
         logger.info(f"🔌 订阅开关: {on or ['（全关·最小模式）']}")
 
     def _on_arm(self, msg) -> None:
@@ -338,79 +330,52 @@ class A3Node:
 
     def _auto_select_camera(self) -> None:
         from . import config as cfg
-        self._active_camera = cfg.CAMERA_LIST[0][0] if (cfg.CAMERA_LIST and cfg.CAMERA_ENABLED) else None
+        self._active_camera = cfg.CAMERA_LIST[0][1] if cfg.CAMERA_LIST else None
 
-    def _camera_topic(self, cid: str) -> str:
-        from . import config as cfg
-        for c, topic, _name in cfg.CAMERA_LIST:
-            if c == cid:
-                return topic
-        return ""
+    def get_camera_frame(self) -> bytes | None:
+        """保留接口（shot 模式下相机帧由 stream.camera_pusher 直接管理，不走 node）"""
+        return None
 
-    def _ensure_camera_sub(self) -> None:
-        """按需订阅当前活跃相机（切换时重建；rclpy 线程调用安全）
-        camera.enable=false 时不订阅（raw 流量保护）"""
+    def list_cameras(self) -> list[dict]:
         from . import config as cfg
-        if not self._active_camera or not cfg.CAMERA_ENABLED:
-            return
-        topic = self._camera_topic(self._active_camera)
-        if not topic or topic == self._camera_sub_topic:
-            return
-        if self._camera_sub is not None:
-            try:
-                self.node.destroy_subscription(self._camera_sub)
-            except Exception:  # noqa: BLE001
-                pass
-        from sensor_msgs.msg import Image
-        self._camera_sub = self.node.create_subscription(
-            Image, topic, self._on_camera, self._qos_sensor)
-        self._camera_sub_topic = topic
-        logger.info(f"📷 相机订阅: {topic}")
+        return [{"id": cid, "name": name, "shot_name": shot, "active": shot == self._active_camera}
+                for cid, shot, name in cfg.CAMERA_LIST]
 
-    def _on_camera(self, msg) -> None:
-        """Image → JPEG（限频 + 降采样；PIL/numpy 缺失时降级跳过）"""
+    def switch_camera(self, camera_id: str) -> dict:
         from . import config as cfg
-        now = time.time()
-        if now - self._camera_last_ts < 1.0 / max(1, cfg.CAMERA_FPS):
-            return
+        valid = {c[0]: c[1] for c in cfg.CAMERA_LIST}
+        if camera_id not in valid:
+            return {"ok": False, "error": f"unknown camera {camera_id}"}
+        self._active_camera = valid[camera_id]
+        return {"ok": True, "active": self._active_camera}
+
+    def shot_jpeg(self) -> bytes | None:
+        """TakeShot → PNG → 缩放 JPEG（stream.camera_pusher 经 to_thread 调用）"""
+        from . import rpc
+        from . import config as cfg
         try:
-            import numpy as np
-            from PIL import Image as PILImage
-            w, h = int(msg.width), int(msg.height)
-            enc = str(msg.encoding or "rgb8")
-            if w == 0 or h == 0 or len(msg.data) < w * h * 3:
-                return
-            arr = np.frombuffer(bytes(msg.data), dtype=np.uint8)
-            if enc in ("rgb8", "bgr8"):
-                arr = arr[: w * h * 3].reshape(h, w, 3)
-                if enc == "bgr8":
-                    arr = arr[:, :, ::-1]
-            elif enc.startswith("rgba") or enc.startswith("bgra"):
-                arr = arr[: w * h * 4].reshape(h, w, 4)[:, :, :3]
-                if enc.startswith("bgra"):
-                    arr = arr[:, :, ::-1]
-            else:
-                return   # yuv422/mono 等暂不支持（RGB 流已覆盖主要相机）
-            img = PILImage.fromarray(arr)
-            if img.width > 800:
-                img = img.resize((800, int(img.height * 800 / img.width)), PILImage.BILINEAR)
             import io
+            from PIL import Image
+            png = rpc.take_shot(self._active_camera or "right_fisheye_camera")
+            img = Image.open(io.BytesIO(png))
+            if img.width > cfg.CAMERA_MAX_WIDTH:
+                img = img.resize((cfg.CAMERA_MAX_WIDTH, int(img.height * cfg.CAMERA_MAX_WIDTH / img.width)),
+                                 Image.BILINEAR)
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=cfg.CAMERA_JPEG_QUALITY)
-            self._camera_frames[self._active_camera] = (buf.getvalue(), now)
             self._camera_frame_count += 1
-            self._camera_last_ts = now
-        except ImportError:
-            pass   # pillow/numpy 未装：相机降级（不崩）
+            return buf.getvalue()
         except Exception as e:  # noqa: BLE001
-            logger.debug(f"相机帧处理失败: {e}")
-
-    # ── 麦克风 VAD 段（对齐 X2 /api/mic 语义；ASR 由平台 sidecar 做）──
+            logger.debug(f"截图失败: {e}")
+            return None
 
     def _on_mic(self, msg) -> None:
+        """VAD 段采集（ProcessedAudioOutput：stream_id/vad_state/audio_data）
+        对齐 X2 /api/mic 语义；识别由平台 sidecar 做。外置麦 VAD 有官方 bug，只取内置。"""
         if _pb2 is None:
             return
         try:
+            from aimdk.protocol.agent.agent_data_pb2 import ProcessedAudioOutput
             m = ProcessedAudioOutput()
             m.ParseFromString(_unwrap(msg))
             self._mic_recv += 1
@@ -418,7 +383,7 @@ class A3Node:
             data = bytes(m.audio_data) if m.audio_data else b""
             with self._mic_lock:
                 self._vad_state = vad
-                if m.stream_id != 1:   # 统一走内置麦（外置麦 VAD 状态有 bug，官方未修）
+                if m.stream_id != 1:
                     return
                 if vad == 3:   # 语音结束 → 封包（前端拉段 + 平台侧 ASR）
                     if data:
@@ -440,6 +405,10 @@ class A3Node:
         except Exception:  # noqa: BLE001
             pass
 
+    def get_mic_audio_b64(self) -> str:
+        with self._mic_lock:
+            return base64.b64encode(self._mic_last_segment).decode()
+
     def get_mic_status(self) -> dict:
         with self._mic_lock:
             return {
@@ -452,32 +421,6 @@ class A3Node:
                 "text": "",   # A3：识别统一在平台 sidecar（本地转写），agent 只采集
                 "recv_count": self._mic_recv,
             }
-
-    def get_mic_audio_b64(self) -> str:
-        with self._mic_lock:
-            return base64.b64encode(self._mic_last_segment).decode()
-
-    # ── 相机（供 camera_pusher 复用的 X2 同形接口）──
-
-    def get_camera_frame(self) -> bytes | None:
-        """当前活跃相机 JPEG（对齐 X2 接口，camera_pusher 复用）；无帧 None"""
-        if not self._active_camera:
-            return None
-        got = self._camera_frames.get(self._active_camera)
-        return got[0] if got else None
-
-    def list_cameras(self) -> list[dict]:
-        from . import config as cfg
-        return [{"id": cid, "name": name, "topic": topic}
-                for cid, topic, name in cfg.CAMERA_LIST]
-
-    def switch_camera(self, camera_id: str) -> dict:
-        valid = [c["id"] for c in self.list_cameras()]
-        if camera_id not in valid:
-            return {"ok": False, "error": f"unknown camera {camera_id}"}
-        self._active_camera = camera_id
-        self._camera_sub_topic = ""   # 让 _ensure_camera_sub 重建订阅
-        return {"ok": True, "active": camera_id}
 
     # ── 命令队列消费（rclpy 线程驱动；命令本体走 HTTP RPC）──────
 

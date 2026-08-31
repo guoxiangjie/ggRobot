@@ -5,6 +5,7 @@ import fs from 'fs'
 import { ipcMain, shell, dialog, app, BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { AgentInstaller, InstallRequest } from './installer/agentInstall'
+import { A3Installer } from './installer/a3Install'
 import { platformPort } from './sidecar'
 
 // ── 简易 kv 设置存储（userData/settings.json；renderer 侧 localStorage 之外需要 main 持有的项）──
@@ -169,10 +170,13 @@ export function registerIpc(): void {
   })
 
   // 装机向导：返回 jobId，进度走 install:progress 事件
-  const installers = new Map<string, AgentInstaller>()
+  const installers = new Map<string, AgentInstaller | A3Installer>()
   ipcMain.handle('installAgent', async (e, req: InstallRequest) => {
     const jobId = `job-${Date.now()}-${Math.floor(Math.random() * 1e4)}`
-    const installer = new AgentInstaller(e.sender)
+    // A3：全新链路（SSH 上传 agent+venv+systemd；新机/已装机通用幂等）；X2：deb+apt 链路
+    const installer = req.model === 'a3'
+      ? new A3Installer(e.sender)
+      : new AgentInstaller(e.sender)
     installers.set(jobId, installer)
     // 异步跑，立即返回 jobId；结果也走 install:progress(done)
     void installer.run(req).finally(() => installers.delete(jobId))

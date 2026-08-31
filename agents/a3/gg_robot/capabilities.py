@@ -25,17 +25,18 @@ def _motion_actions() -> list[dict]:
 
 
 def _cameras() -> list[dict]:
+    """shot 模式：camera 字段含义 id=页面标识 / shot=TakeShot 相机名"""
     try:
         from . import node as node_mod
         if node_mod._node is not None:
-            return [{"id": c["id"], "label": c["name"], "topic": c["topic"],
-                     "active": c["id"] == node_mod._node._active_camera}
+            return [{"id": c["id"], "label": c["name"], "topic": f"cam.{c['shot']}",
+                     "active": c["shot"] == node_mod._node._active_camera}
                     for c in node_mod._node.list_cameras()]
     except Exception:
         pass
     from . import config as cfg
-    return [{"id": cid, "label": name, "topic": topic, "active": False}
-            for cid, topic, name in cfg.CAMERA_LIST]
+    return [{"id": cid, "label": name, "topic": f"cam.{shot}", "active": False}
+            for cid, shot, name in cfg.CAMERA_LIST]
 
 
 def build_capabilities() -> dict:

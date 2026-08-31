@@ -252,7 +252,7 @@ export default function RobotList(): JSX.Element {
               </Typography.Text>
               <Input value={pairUser} onChange={setPairUser} placeholder="SSH 用户名（agi）" />
               <Input mode="password" value={pairPass} onChange={setPairPass} placeholder="SSH 密码" />
-              <Input value={pairName} onChange={setPairName} placeholder="别名（可选，如：展厅 X2）" />
+              <Input value={pairName} onChange={setPairName} placeholder="别名（可选，如：展厅 1号）" />
               <Button theme="solid" size="large" onClick={() => void doPair()}>开始配对</Button>
             </div>
           ) : (
