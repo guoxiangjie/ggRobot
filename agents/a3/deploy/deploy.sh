@@ -23,9 +23,9 @@ echo "📦 [2/6] 传 SDK 协议件（whl + ros2_plugin_proto）"
 rsync -az "$SDK/prebuilt/a3_aimdk-3.2.0-py3-none-any.whl" agi@$IP:$REMOTE_DIR/
 rsync -az "$SDK/prebuilt/ros2_plugin_proto_aarch64/" agi@$IP:$REMOTE_DIR/ros2_plugin_proto/
 
-echo "📦 [3/6] venv + 依赖（首装约 1-2 分钟）"
+echo "📦 [3/6] venv + 依赖（python3.11 —— ROS Jazzy 的 rclpy 是 3.11 包，默认 3.12 不兼容）"
 $SSH "cd $REMOTE_DIR && \
-  [ -d venv ] || python3 -m venv venv && \
+  if [ ! -x venv/bin/python ] || ! venv/bin/python --version 2>&1 | grep -q 'Python 3.11'; then rm -rf venv; python3.11 -m venv venv; fi && \
   ./venv/bin/pip install -q -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
   ./venv/bin/pip install -q --force-reinstall ./a3_aimdk-3.2.0-py3-none-any.whl"
 
@@ -63,4 +63,4 @@ echo "📦 [6/6] 健康检查"
 sleep 4
 $SSH "curl -s -m 5 http://127.0.0.1:8300/api/health" || echo "  ⚠️ health 未就绪：journalctl --user -u ggrobot-a3 -n 50 排查"
 echo ""
-echo "✅ 部署完成。token: $TOKEN（配对用，conf 已写入机器人）"
+echo "✅ 部署完成。token: ${TOKEN}（配对用，conf 已写入机器人）"

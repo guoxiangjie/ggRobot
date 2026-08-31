@@ -16,7 +16,7 @@ async def set_mode(mode: str = Query(..., description="Action 名（GetAvailable
     from .. import node as node_mod
     if node_mod._cmd_queue is None:
         return {"ok": False}
-    fut = node_mod._cmd_queue.put("mode", action=mode)
+    fut = node_mod._cmd_queue.put("mode", action_name=mode)
     return fut.result(timeout=5.0)
 
 

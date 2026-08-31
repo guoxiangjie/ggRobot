@@ -16,7 +16,16 @@ rpc:
   query_retries: 2        # 查询类幂等可重试
   ctrl_retries: 0         # 控制类不重试（TTS/动作盲重发=重复播放）
 
+# 订阅开关（A3531001 二分排查；定位后恢复默认）
+subs:
+  arm: false
+  bms: false
+  emergency: false
+  tts_status: false
+  audio: false
+
 camera:
+  enable: false    # raw 流量大，疑似触发内部通信告警；按需开
   fps: 5                  # Image→JPEG 推流帧率（Phase C）
   jpeg_quality: 60
 

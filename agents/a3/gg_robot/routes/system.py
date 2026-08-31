@@ -1,13 +1,22 @@
-"""GET /api/system（Action+告警）+ GET /api/status（BMS/关节/急停缓存）"""
+"""GET /api/system（Action+告警）+ GET /api/status（BMS/关节/急停缓存）
+
+system 有 5s 结果缓存：sidecar hub 每 5s 轮询此端点，直通 RPC 会以 0.2Hz 持续
+打 MDU（文档限频红线）——缓存后多客户端并发轮询也只有单次穿透。"""
+
+import time
 
 from fastapi import APIRouter
 
 router = APIRouter()
 
+_cache: dict = {"ts": 0.0, "data": None}
+
 
 @router.get("/api/system")
 async def system():
     from .. import rpc
+    if _cache["data"] is not None and time.time() - _cache["ts"] < 5.0:
+        return _cache["data"]
     out: dict = {"action": None, "alerts_count": 0, "alerts": []}
     try:
         info = rpc.action_get().get("info", {})
@@ -26,6 +35,7 @@ async def system():
         ]
     except Exception as e:  # noqa: BLE001
         out["alerts_error"] = str(e)
+    _cache["ts"], _cache["data"] = time.time(), out
     return out
 
 

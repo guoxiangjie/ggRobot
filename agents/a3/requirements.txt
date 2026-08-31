@@ -5,3 +5,4 @@ httpx>=0.27.0
 # a3_aimdk-3.2.0-py3-none-any.whl（SDK prebuilt，部署脚本安装：BMS/急停 pb 反序列化）
 pillow>=10.0
 numpy>=1.26
+pyyaml>=6.0   # rclpy 依赖（venv 隔离后需自带）

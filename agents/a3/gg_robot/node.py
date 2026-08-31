@@ -23,11 +23,14 @@ logger = logging.getLogger(__name__)
 # pb 协议（未部署 a3_aimdk whl 时降级）
 _pb2 = None
 try:
-    from aimdk.protocol_pb2 import (  # type: ignore
-        BmsStateChannel, EmergencyStateChannel, ProcessedAudioOutput)
+    # whl 真实结构 aimdk/protocol/<模块>/*_pb2（文档示例的 aimdk.protocol_pb2 是错的，
+    # 以官方 examples/other/bms.py 等为准；2026-08-31 实机核对）
+    from aimdk.protocol.hal.bms.hal_bms_channel_pb2 import BmsStateChannel  # type: ignore
+    from aimdk.protocol.hal.state.hal_state_channel_pb2 import EmergencyStateChannel  # type: ignore
+    from aimdk.protocol.agent.agent_data_pb2 import ProcessedAudioOutput  # type: ignore
     _pb2 = True
 except Exception:  # noqa: BLE001 —— whl 未装/不在机上是部署态常态
-    logger.warning("⚠️ a3_aimdk whl 未安装：BMS/急停/VAD 音频无法反序列化（降级 None）")
+    logger.warning("⚠️ a3_aimdk pb 导入失败：BMS/急停/VAD 音频降级 None")
 
 
 class Command:
@@ -125,29 +128,47 @@ class A3Node:
         self._mic_last_segment_size = 0
         self._mic_source = 0
 
-        # ── 速度状态（50Hz 发布循环用）──
+        # ── 速度状态（按需发布：静止即停发，PASSIVE 态灌速度会触发 H3 告警 A3531001，
+        #    2026-08-31 实机教训；官方 walk.py 语义也是"发一段时间后停发"）──
         self._vel = {"forward": 0.0, "lateral": 0.0, "angular": 0.0}
         self._vel_lock = threading.Lock()
         self._vel_last_cmd = 0.0
-        self._vel_alive = True
+        self._vel_publishing = False   # 仅运动期间发布；全零 2s 后停发
+        self._vel_zero_since: float | None = None
+        self._mode_checked_at = 0.0    # MOTION 前置检查缓存（10s）
 
         logger.info("🤖 A3Node 就绪（传感器订阅 + 速度发布）")
 
     # ── 订阅 ─────────────────────────────
 
     def _create_sensor_subs(self, qos) -> None:
+        """按 subs.* 开关订阅（A3531001 二分排查：全关=最小模式）"""
         from ros2_plugin_proto.msg import RosMsgWrapper
+        from . import config as cfg
 
-        def sub(topic: str, cb):
+        def sub_r(topic: str, cb):
             self.node.create_subscription(RosMsgWrapper, topic, cb, qos)
 
-        sub("/motion/control/arm_joint_state", self._on_arm)
-        sub("/aima/bms/data/pb_3Aaimdk_2Eprotocol_2EBmsStateChannel", self._on_bms)
-        sub("/hal_state/emergency/pb_3Aaimdk_2Eprotocol_2EEmergencyStateChannel", self._on_emergency)
-        # TTS 状态推送（normal 模式才发；wait_tts_done 的 topic 通道）
-        sub("/interaction/tts_status/pb_3Aaimdk_2Eprotocol_2ETTSStatusChannel", self._on_tts_status)
-        # VAD 降噪音频（only_voice 模式持续输出；normal 模式唤醒词激活）
-        sub("/agent/process_audio_output/pb_3Aaimdk_2Eprotocol_2EProcessedAudioOutput", self._on_mic)
+        def sub_j(topic: str, cb):
+            from sensor_msgs.msg import JointState
+            self.node.create_subscription(JointState, topic, cb, qos)
+
+        if cfg.SUBS_ARM:
+            sub_j("/motion/control/arm_joint_state", self._on_arm)
+        if cfg.SUBS_BMS:
+            sub_r("/aima/bms/data/pb_3Aaimdk_2Eprotocol_2EBmsStateChannel", self._on_bms)
+        if cfg.SUBS_EMERGENCY:
+            sub_r("/hal_state/emergency/pb_3Aaimdk_2Eprotocol_2EEmergencyStateChannel", self._on_emergency)
+        if cfg.SUBS_TTS_STATUS:
+            # TTS 状态推送（normal 模式才发；wait_tts_done 的 topic 通道）
+            sub_r("/interaction/tts_status/pb_3Aaimdk_2Eprotocol_2ETTSStatus", self._on_tts_status)
+        if cfg.SUBS_AUDIO:
+            # VAD 降噪音频（only_voice 模式持续输出；normal 模式唤醒词激活）
+            sub_r("/agent/process_audio_output/pb_3Aaimdk_2Eprotocol_2EProcessedAudioOutput", self._on_mic)
+        on = [k for k, v in dict(arm=cfg.SUBS_ARM, bms=cfg.SUBS_BMS, emergency=cfg.SUBS_EMERGENCY,
+                                 tts=cfg.SUBS_TTS_STATUS, audio=cfg.SUBS_AUDIO,
+                                 camera=cfg.CAMERA_ENABLED).items() if v]
+        logger.info(f"🔌 订阅开关: {on or ['（全关·最小模式）']}")
 
     def _on_arm(self, msg) -> None:
         try:
@@ -171,13 +192,13 @@ class A3Node:
         try:
             m = BmsStateChannel()
             m.ParseFromString(_unwrap(msg))
-            # 双电池数组：取"在用"包（bms_state=Connected 优先，否则最后一个）
-            packs = list(m.bms_datas)
-            cur = next((b for b in reversed(packs)
-                        if b.bms_state == 2 or "Connected" in str(b.bms_state)), packs[-1] if packs else None)
+            # channel 消息：bms_datas 是 repeated BmsState（双电池）；取"在用"包
+            packs = list(m.bms_datas) or ([m.data] if m.HasField("data") else [])
+            cur = next((b for b in reversed(packs) if int(b.bms_state) == 1),  # 1=Connected
+                       packs[-1] if packs else None)
             if cur is None:
                 return
-            charging = "CHARGING" in str(getattr(cur, "power_supply_status", ""))
+            charging = int(getattr(cur, "power_supply_status", 0)) == 1  # 1=CHARGING
             self.battery = {
                 "charge": cur.charge,
                 "voltage": round(cur.voltage / 1000, 2),      # mV → V
@@ -197,9 +218,10 @@ class A3Node:
         try:
             m = EmergencyStateChannel()
             m.ParseFromString(_unwrap(msg))
-            d = getattr(m, "data", m)
+            d = m.data if m.HasField("data") else m
             self.emergency = {
-                "active": bool(getattr(d, "wired_emergency_stop", False)
+                "active": bool(getattr(d, "active", False)
+                               or getattr(d, "wired_emergency_stop", False)
                                or getattr(d, "wireless_emergency_stop", False)
                                or getattr(d, "software_emergency_stop", False)),
                 "wired": bool(getattr(d, "wired_emergency_stop", False)),
@@ -233,20 +255,50 @@ class A3Node:
             qos)
         self._vel_timer = self.node.create_timer(1.0 / 50.0, self._publish_velocity)
 
+    def _ensure_motion_mode(self) -> None:
+        """开始运动前确保 MC 在 MOTION 态（10s 缓存；非 MOTION 自动切，对齐文档 7.1.4）"""
+        if time.time() - self._mode_checked_at < 10.0:
+            return
+        from . import rpc
+        try:
+            info = rpc.action_get().get("info", {})
+            cur = str(info.get("current_action", "")).replace("MotionControlAction_", "")
+            if cur and cur != "MOTION":
+                logger.info(f"🏃 速度前置：{cur} → MOTION")
+                rpc.action_set("MOTION")
+                time.sleep(0.5)
+            self._mode_checked_at = time.time()
+        except Exception as e:  # noqa: BLE001 —— 查询失败不阻塞遥控（mc 会自行拒绝非法输入）
+            logger.warning(f"模式前置检查失败: {e}")
+            self._mode_checked_at = time.time()
+
     def set_velocity(self, forward: float, lateral: float, angular: float) -> None:
-        """目标速度（m/s / rad/s；API 线程调用）"""
+        """目标速度（m/s / rad/s；API 线程调用）。非零 → 激活发布；零 → 计时停发"""
+        moving = bool(forward or lateral or angular)
         with self._vel_lock:
             self._vel = {"forward": forward, "lateral": lateral, "angular": angular}
             self._vel_last_cmd = time.time()
+            if moving:
+                self._vel_publishing = True
+                self._vel_zero_since = None
+            elif self._vel_zero_since is None:
+                self._vel_zero_since = time.time()
 
     def _publish_velocity(self) -> None:
-        """50Hz 发布（rclpy timer 回调）。>1s 无新指令自动归零（松手保护）"""
+        """50Hz 发布（rclpy timer 回调）。静止（全零 2s）后停止发布——
+        PASSIVE 态持续灌速度话题会触发 mc 异常（实机 A3531001）"""
         from . import config as cfg
         with self._vel_lock:
+            if not self._vel_publishing:
+                return   # 静止期：零发布（这是修复 H3 告警的关键）
             v = dict(self._vel)
             if time.time() - self._vel_last_cmd > 1.0:
                 v = {"forward": 0.0, "lateral": 0.0, "angular": 0.0}
                 self._vel = dict(v)
+            if v["forward"] == 0 and v["lateral"] == 0 and v["angular"] == 0:
+                if self._vel_zero_since is not None and time.time() - self._vel_zero_since > 2.0:
+                    self._vel_publishing = False   # 停发（下次非零 set_velocity 再激活）
+                    return
         try:
             payload = json.dumps({"data": {
                 "mode": 0,
@@ -286,7 +338,7 @@ class A3Node:
 
     def _auto_select_camera(self) -> None:
         from . import config as cfg
-        self._active_camera = cfg.CAMERA_LIST[0][0] if cfg.CAMERA_LIST else None
+        self._active_camera = cfg.CAMERA_LIST[0][0] if (cfg.CAMERA_LIST and cfg.CAMERA_ENABLED) else None
 
     def _camera_topic(self, cid: str) -> str:
         from . import config as cfg
@@ -296,8 +348,10 @@ class A3Node:
         return ""
 
     def _ensure_camera_sub(self) -> None:
-        """按需订阅当前活跃相机（切换时重建；rclpy 线程调用安全）"""
-        if not self._active_camera:
+        """按需订阅当前活跃相机（切换时重建；rclpy 线程调用安全）
+        camera.enable=false 时不订阅（raw 流量保护）"""
+        from . import config as cfg
+        if not self._active_camera or not cfg.CAMERA_ENABLED:
             return
         topic = self._camera_topic(self._active_camera)
         if not topic or topic == self._camera_sub_topic:
@@ -428,10 +482,11 @@ class A3Node:
     # ── 命令队列消费（rclpy 线程驱动；命令本体走 HTTP RPC）──────
 
     def process_commands(self) -> None:
-        from . import _cmd_queue as q  # noqa: PLC0415
-        assert q is not None
+        # _cmd_queue 是本模块级全局（__main__.ros_spin 里注入），直接引用
+        if _cmd_queue is None:
+            return
         for _ in range(20):  # 每轮最多消费 20 条，防单轮霸占
-            cmd = q.get_nowait()
+            cmd = _cmd_queue.get_nowait()
             if cmd is None:
                 return
             try:
@@ -447,9 +502,12 @@ class A3Node:
         act = cmd.action
 
         if act == "velocity":
-            self.set_velocity(float(cmd.kwargs.get("forward", 0)),
-                              float(cmd.kwargs.get("lateral", 0)),
-                              float(cmd.kwargs.get("angular", 0)))
+            f, l, a = (float(cmd.kwargs.get("forward", 0)),
+                       float(cmd.kwargs.get("lateral", 0)),
+                       float(cmd.kwargs.get("angular", 0)))
+            if (f or l or a) and not self._vel_publishing:
+                self._ensure_motion_mode()   # 速度话题仅 MOTION 可调（文档 7.1.4）
+            self.set_velocity(f, l, a)
             return {"ok": True}
 
         if act == "stop":
@@ -478,7 +536,7 @@ class A3Node:
             return {"ok": True}
 
         if act == "mode":
-            return rpc.action_set(str(cmd.kwargs.get("action", "MOTION")))
+            return rpc.action_set(str(cmd.kwargs.get("action_name", "MOTION")))
 
         raise ValueError(f"unknown command: {act}")
 

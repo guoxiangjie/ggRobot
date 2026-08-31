@@ -88,6 +88,9 @@ RPC_QUERY_RETRIES = int(_get("rpc.query_retries", 2))   # 查询类（幂等）�
 RPC_CTRL_RETRIES = int(_get("rpc.ctrl_retries", 0))     # 控制类（非幂等：TTS/动作）不重试
 
 # ── 相机（Phase C：sensor_msgs/Image → JPEG 推流）──
+# ⚠️ raw Image 30FPS≈265MB/s DDS 流量，常订阅疑似触发内部通信告警（实机验证中）；
+#    默认关闭，前端打开相机页时再经 API 显式开启（camera.enable=true 供调试）
+CAMERA_ENABLED = bool(_get("camera.enable", False))
 CAMERA_FPS = int(_get("camera.fps", 5))
 CAMERA_JPEG_QUALITY = int(_get("camera.jpeg_quality", 60))
 CAMERA_LIST = (
@@ -99,6 +102,14 @@ CAMERA_LIST = (
     ("head_right", "/hal/head_right_fisheye_camera/rgb", "头部右鱼眼"),
     ("head_rear", "/hal/head_rear_fisheye_camera/rgb", "头部后鱼眼"),
 )
+
+# ── 订阅开关矩阵（A3531001 排查二分法：默认全关最小模式，逐项打开定位元凶）──
+SUBS_ARM = bool(_get("subs.arm", False))            # 臂关节状态（小消息）
+SUBS_BMS = bool(_get("subs.bms", False))            # 电池（小消息）
+SUBS_EMERGENCY = bool(_get("subs.emergency", False))  # 急停（小消息）
+SUBS_TTS_STATUS = bool(_get("subs.tts_status", False))  # TTS 播报状态
+SUBS_AUDIO = bool(_get("subs.audio", False))        # VAD 降噪音频（32KB/s）
+# 相机开关已有 CAMERA_ENABLED（raw 265MB/s，最强嫌疑）
 
 # ── 2.0 agent 通用 ──
 AGENT_CONF_PATH = Path(os.environ.get(
