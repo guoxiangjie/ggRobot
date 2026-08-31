@@ -55,11 +55,21 @@ export class A3Installer extends EventEmitter {
       await this.connect(conn, req)
       this.emitStep({ step: 'connect', detail: `已连接 ${req.username}@${req.host}` })
 
-      // ── 2. SN（/agibot/info/sn；health 兜底由调用方探测值传入）──
+      // ── 2. 机型校验 + SN ──
+      // 防呆：/agibot/info/model 是 A3 特征文件（X2/A2 无此路径）——填错 IP 时直接终止，
+      // 不在别的机型上乱装（python3.11/tar 布局不同，装了也是坏的）
+      this.emitStep({ step: 'read-sn', detail: '校验机型…' })
+      const modelOut = await this.exec(conn, 'cat /agibot/info/model 2>/dev/null; true', 8_000)
+      const devModel = modelOut.out.trim()
+      if (!devModel.startsWith('A3')) {
+        throw new Error(`目标不是 A3 机器人（${devModel || '未知机型，无 /agibot/info/model'}）——请检查 IP 是否填对`)
+      }
+      this.emitStep({ step: 'read-sn', detail: `机型 ${devModel} ✓` })
+
       this.emitStep({ step: 'read-sn', detail: '读取设备 SN' })
       const snOut = await this.exec(conn, 'cat /agibot/info/sn 2>/dev/null; true', 8_000)
-      let sn = snOut.out.split('\n').map((l) => l.trim()).find((v) => v && v.length >= 6) || ''
-      if (!sn) sn = `a3-${req.host.split('.').pop()}`
+      const sn = snOut.out.split('\n').map((l) => l.trim()).find((v) => v && v.length >= 6) || ''
+      if (!sn) throw new Error('读取 SN 失败（/agibot/info/sn 为空）')
       this.emitStep({ step: 'read-sn', detail: `SN = ${sn}` })
 
       // ── 3. 平台登记 → 签发 token ──
