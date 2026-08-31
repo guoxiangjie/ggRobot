@@ -66,20 +66,34 @@ async def current_map():
 
 @router.get("/api/slam/map/{map_id}")
 async def get_map(map_id: str):
-    """取地图（png base64 + map_info + 拓扑点）"""
+    """取地图 — 响应字段对齐 X2（Maps.tsx 零改动）：map_base64/map_info/navi_points(像素 u,v)
+    路径参数兼容 map_id 与 map_name（前端 X2 传 name，A3 列表两者都有）"""
     try:
+        if not map_id.isdigit():
+            resolved = next((m.get("map_id") for m in
+                             (rpc.map_list().get("data", {}).get("map_lists") or [])
+                             if m.get("map_name") == map_id), map_id)
+            map_id = str(resolved)
         r = rpc.map_2d(map_id).get("data", {})
         topo = rpc.map_topo(map_id).get("data", {})
+        navi = [{"x": p.get("pixel_pose", {}).get("position", {}).get("u"),
+                 "y": p.get("pixel_pose", {}).get("position", {}).get("v")}
+                for p in topo.get("points", [])
+                if p.get("pixel_pose", {}).get("position")]
+        global _last_map_meta
+        _last_map_meta = {"resolution": r.get("resolution"),
+                          "origin_x": r.get("origin_x"), "origin_y": r.get("origin_y")}
         return {
             "ok": True,
-            "map": {
-                "map_id": r.get("map_id"), "map_name": r.get("map_name"),
-                "width": r.get("width"), "height": r.get("height"),
+            "map_id": r.get("map_id"),
+            "map_base64": r.get("map_data", ""),
+            "map_info": {"width": r.get("width"), "height": r.get("height")},
+            "navi_points": navi,
+            "meta": {   # A3 附加（建图/重定位换算用）
                 "resolution": r.get("resolution"),
                 "origin_x": r.get("origin_x"), "origin_y": r.get("origin_y"),
-                "png_b64": r.get("map_data", ""),
+                "topo_points": topo.get("points", []),
             },
-            "topo": topo,
         }
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)}
@@ -92,6 +106,37 @@ async def relocalize(req: RelocalizeRequest):
         return {"ok": True, "raw": r}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)}
+
+
+@router.get("/api/slam/origin/{map_id}")
+async def get_origin(map_id: str):
+    """重定位默认位姿（X2 兼容：lines[1]='x y'）；A3 默认地图原点 0,0（实机校准后可改）"""
+    return {"ok": True, "lines": ["a3", "0 0", ""]}
+
+
+@router.get("/api/slam/pose")
+async def slam_pose():
+    """实时位姿（世界坐标 m，X2 兼容）——取自实时建图数据的 cur_pos（像素）+ 2D 图 origin 换算"""
+    import time
+    try:
+        rt = rpc.mapping_realtime().get("data", {})
+        cur = rt.get("cur_pos", {}).get("position", {})
+        u, v, ang = cur.get("u"), cur.get("v"), rt.get("cur_pos", {}).get("angle", 0)
+        if u is None:
+            return {"pose": {}}
+        # origin 从最近一次 get_map 的 meta 缓存；无缓存时退化返回像素
+        m = _last_map_meta
+        if m:
+            res = float(m.get("resolution") or 20) / 1000.0   # mm/px → m/px
+            x = (float(u) - float(m.get("origin_x") or 0)) * res
+            y = -(float(v) - float(m.get("origin_y") or 0)) * res
+            return {"pose": {"x": round(x, 3), "y": round(y, 3), "angle": ang, "ts": time.time()}}
+        return {"pose": {"u": u, "v": v, "angle": ang}}
+    except Exception:  # noqa: BLE001
+        return {"pose": {}}
+
+
+_last_map_meta: dict = {}
 
 
 @router.get("/api/slam/realtime")

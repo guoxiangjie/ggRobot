@@ -94,7 +94,9 @@ function defaultDuration(type: string, form: Record<string, unknown>): number {
     case 'tts': return Math.max(1, Math.ceil(String(form.text || '').length * 0.25))
     case 'motion': {
       const d = Number(form.motion_dur)
-      if (d > 0) return d   // 清单实测时长（capabilities 上报）
+      if (d > 0) return d   // 清单实测时长（capabilities 上报；A3 资源自带真实时长）
+      const mid = String(form.motion_id ?? '')
+      if (mid.includes('/')) return 5   // A3 资源动作兜底 5s
       const area = Number(form.area)
       if (area >= 21 && area <= 48) return 4   // 讲话手势（人工估值，SDK 无完成回调）
       return area === 11 ? 3 : 2   // 兜底：全身 3s / 手臂 2s
@@ -124,7 +126,10 @@ function TypeIcon({ t, color, size = 18 }: { t: string; color: string; size?: nu
 
 // ── 步骤编辑弹窗（只配参数 + 时长；开始时刻自动 = 前序累计）──
 interface StepEditState { trackIdx: number; stepIdx: number | null; type: string; form: Record<string, unknown>; startAt: number }
-interface MotionOption { id: string; name: string; area: number; duration?: number }
+interface MotionOption { id: string; name: string; area?: number; duration?: number }
+/** A3 动作 id 是资源路径（含 /，无 area）——下拉与拆分逻辑按此分支 */
+const isA3Motion = (motions: MotionOption[]): boolean =>
+  motions.length > 0 && motions.some((m) => m.id.includes('/'))
 function StepModal({ state, types, motions, linkcrafts, onClose, onSave }: {
   state: StepEditState; types: Record<string, StepTypeMeta>; motions: MotionOption[]; linkcrafts: LinkcraftItem[]
   onClose: () => void; onSave: (s: StepEditState) => void
@@ -178,14 +183,23 @@ function StepModal({ state, types, motions, linkcrafts, onClose, onSave }: {
                   }} />
               ) : state.type === 'motion' && f.name === 'motion_id' && motions.length > 0 ? (
                 <Select<string> filter style={{ width: '100%' }}
-                  value={`${Number(form.motion_id) || 0}:${Number(form.area) || 2}`}
-                  optionList={motions.map((m) => ({ label: m.name, value: m.id }))}
+                  value={isA3Motion(motions)
+                    ? String(form.motion_id ?? '')
+                    : `${Number(form.motion_id) || 0}:${Number(form.area) || 2}`}
+                  optionList={motions.map((m) => ({
+                    label: m.duration ? `${m.name}（${m.duration}s）` : m.name, value: m.id }))}
                   onChange={(v) => {
-                    const [mid, area] = String(v).split(':').map(Number)
-                    setF('motion_id', mid)
-                    setF('area', area)
-                    const hit = motions.find((m) => m.id === String(v))
-                    if (hit?.duration) setF('motion_dur', hit.duration)
+                    const key = String(v)
+                    const hit = motions.find((m) => m.id === key)
+                    if (isA3Motion(motions)) {
+                      setF('motion_id', key)            // A3：路径原样
+                      if (hit?.duration) setF('motion_dur', hit.duration)
+                    } else {
+                      const [mid, area] = key.split(':').map(Number)
+                      setF('motion_id', mid)
+                      setF('area', area)
+                      if (hit?.duration) setF('motion_dur', hit.duration)
+                    }
                   }} />
               ) : f.kind === 'number' ? (
                 <InputNumber value={val as number} onChange={(v) => setF(f.name, v)} style={{ width: '100%' }} />

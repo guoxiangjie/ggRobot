@@ -338,7 +338,7 @@ class A3Node:
 
     def list_cameras(self) -> list[dict]:
         from . import config as cfg
-        return [{"id": cid, "name": name, "shot_name": shot, "active": shot == self._active_camera}
+        return [{"id": cid, "label": name, "shot_name": shot, "active": shot == self._active_camera}
                 for cid, shot, name in cfg.CAMERA_LIST]
 
     def switch_camera(self, camera_id: str) -> dict:

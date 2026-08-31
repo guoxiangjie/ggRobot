@@ -14,7 +14,7 @@ import { cachedLinkcraft, cachedLinkcraftAt, refreshLinkcraft, type LinkcraftIte
 import { useRobotsStore } from '@/stores/robots'
 
 // agent 侧清单结构（与 ControlTab 一致；灵创结构见 linkcraftCache.ts 的 LinkcraftItem）
-interface MotionAction { id: string; name: string; area: number; requires_stand: boolean }
+interface MotionAction { id: string; name: string; area?: number; requires_stand?: boolean; duration?: number }
 
 function linkcraftType(key: string): string {
   return key.toLowerCase().includes('onnx') ? 'BODY' : 'ARM'   // 与后端类型推断一致
@@ -86,9 +86,12 @@ function EditModal({ initial, onClose, onSaved }: {
     if (form.actionKind === 'linkcraft' && !form.resourceKey) { toast.warning('请选择灵创动作'); return }
     const action: FreeAction | null = form.actionKind === 'motion'
       ? (() => {
-          // 动作清单 id 是 "3024:11"（动作号:部位）复合格式 —— 必须拆开存
-          const [idStr, areaStr] = form.motionId.split(':')
           const m = motions.find((x) => x.id === form.motionId)
+          // A3：id 是资源文件路径（无复合格式，原样存）；X2："3024:11"（动作号:部位）拆开存
+          if ((m && !('area' in m)) || form.motionId.includes('/')) {
+            return { kind: 'motion', motion_id: form.motionId }
+          }
+          const [idStr, areaStr] = form.motionId.split(':')
           return { kind: 'motion', motion_id: idStr, area: Number(areaStr) || m?.area || 2 }
         })()
       : form.actionKind === 'linkcraft'
@@ -225,11 +228,20 @@ export default function FreePlayPage(): JSX.Element {
     const jobs: Promise<unknown>[] = []
     if (item.tts) jobs.push(http.post('/api/tts', { text: item.tts }, { timeout: 12000 }))
     if (item.action?.kind === 'motion') {
-      // 历史数据兜底：motion_id 可能存过 "3024:11" 复合格式，拆开取动作号
-      const mid = Number(String(item.action.motion_id).split(':')[0]) || 0
-      jobs.push(http.post('/api/motion',
-        { area: item.action.area ?? 2, motion_id: mid, interrupt: true },
-        { timeout: 15000 }))
+      const robot = robots.find((r) => r.id === item.robot_id)
+      const isA3 = (robot?.model || '').startsWith('a3')
+      if (isA3) {
+        // A3：motion_id = 资源文件路径（原样传，无 area 概念）
+        jobs.push(http.post('/api/motion',
+          { motion_id: String(item.action.motion_id), duration_ms: 15000 },
+          { timeout: 15000 }))
+      } else {
+        // X2：历史数据兜底——motion_id 可能存过 "3024:11" 复合格式，拆开取动作号
+        const mid = Number(String(item.action.motion_id).split(':')[0]) || 0
+        jobs.push(http.post('/api/motion',
+          { area: item.action.area ?? 2, motion_id: mid, interrupt: true },
+          { timeout: 15000 }))
+      }
     } else if (item.action?.kind === 'linkcraft') {
       jobs.push(http.post('/api/resources/play',
         { resource_key: item.action.resource_key, version: item.action.version || '',

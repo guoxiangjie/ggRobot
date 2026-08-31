@@ -29,13 +29,13 @@ def _cameras() -> list[dict]:
     try:
         from . import node as node_mod
         if node_mod._node is not None:
-            return [{"id": c["id"], "label": c["name"], "topic": f"cam.{c['shot']}",
+            return [{"id": c["id"], "label": c["label"], "topic": f"cam.{c['id']}",
                      "active": c["shot"] == node_mod._node._active_camera}
                     for c in node_mod._node.list_cameras()]
     except Exception:
         pass
     from . import config as cfg
-    return [{"id": cid, "label": name, "topic": f"cam.{shot}", "active": False}
+    return [{"id": cid, "label": name, "topic": f"cam.{cid}", "active": False}
             for cid, shot, name in cfg.CAMERA_LIST]
 
 

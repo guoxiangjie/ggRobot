@@ -15,11 +15,14 @@ const STEP_LABEL: Record<string, string> = {
   'health-poll': '等待服务就绪', restart: '重启服务', done: '完成',
 }
 
-export default function UpdateAgents({ targets, onClose, onDone }: {
+export default function UpdateAgents({ targets: allTargets, onClose, onDone }: {
   targets: RobotRecord[]
   onClose: () => void
   onDone: () => void
 }): JSX.Element {
+  // A3 走 tar 包一键装机链路（更新=重跑装机），本弹窗（deb/apt）仅 X2
+  const targets = allTargets.filter((r) => !String(r.model || '').startsWith('a3'))
+  const skippedA3 = allTargets.length - targets.length
   const [debPath, setDebPath] = useState('')
   const [username, setUsername] = useState('agi')
   const [password, setPassword] = useState('')
@@ -118,6 +121,11 @@ export default function UpdateAgents({ targets, onClose, onDone }: {
           <Typography.Text type="tertiary" size="small">
             上传新 deb 并安装（apt 原子更新，失败自动保留旧版本；配对关系保持不变；更新期间机器人会短暂离线）
           </Typography.Text>
+          {skippedA3 > 0 && (
+            <Typography.Text type="warning" size="small">
+              已跳过 {skippedA3} 台 A3 机型（A3 更新走「添加机器人 → A3 → 一键装机」重跑即可，幂等）
+            </Typography.Text>
+          )}
           <div>
             <Typography.Text type="tertiary" size="small">deb 安装包 *</Typography.Text>
             <div style={{ display: 'flex', gap: 8 }}>

@@ -67,7 +67,7 @@ export default function MappingStudioPage(): JSX.Element {
     wsRef.current = ws
     ws.onopen = (): void => {
       setWsOpen(true)
-      ws.send(JSON.stringify({ v: 1, type: 'sub', topics: ['slam.cloud'] }))
+      ws.send(JSON.stringify({ v: 1, type: 'sub', topics: ['slam.cloud', 'slam.map'] }))
     }
     ws.onclose = (): void => {
       setWsOpen(false)
@@ -75,7 +75,32 @@ export default function MappingStudioPage(): JSX.Element {
       setPressed(new Set())
     }
     ws.onmessage = (ev): void => {
-      if (typeof ev.data === 'string') return   // session/pong 等文本消息忽略
+      if (typeof ev.data === 'string') {
+        // A3 数据源：slam.map JSON（cur_pos/lidar_points/trajectory 均为地图像素，res≈20mm/px）
+        try {
+          const msg = JSON.parse(ev.data) as { type?: string; topic?: string; data?: {
+            cur_pos?: { position?: { u: number; v: number }; angle?: number }
+            lidar_points?: Array<{ u: number; v: number }>; trajectory?: Array<{ u: number; v: number }> } }
+          if (msg.type === 'event' && msg.topic === 'slam.map' && msg.data) {
+            const PX_M = 0.02   // 20mm/px
+            const pts = pointsRef.current
+            for (const p of msg.data.lidar_points || []) {
+              pts.add(gkey(Math.round(p.u * PX_M * 10), Math.round(p.v * PX_M * 10)))   // 米→10cm 格
+            }
+            const tr = trailRef.current
+            for (const t of msg.data.trajectory || []) {
+              const x = t.u * PX_M, y = t.v * PX_M
+              const lastX = tr.length >= 2 ? tr[tr.length - 2] : null
+              if (lastX == null || Math.hypot(x - lastX, y - tr[tr.length - 1]) > 0.3) tr.push(x, y)
+            }
+            const c = msg.data.cur_pos?.position
+            if (c) poseRef.current = { x: c.u * PX_M, y: c.v * PX_M, yaw: msg.data.cur_pos?.angle ?? 0 }
+            frameNRef.current++
+            if (frameNRef.current % 4 === 1) { setPose(poseRef.current); setCloudCount(pts.size) }
+          }
+        } catch { /* 非 JSON 忽略 */ }
+        return
+      }
       const buf = ev.data as ArrayBuffer
       if (buf.byteLength < 18) return
       const dv = new DataView(buf)

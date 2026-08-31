@@ -201,7 +201,11 @@ async def camera_pusher(interval: float = 1.0):
         try:
             frame = await asyncio.to_thread(_node.shot_jpeg)
             if frame:
-                await publish_frame(f"cam.{_node._active_camera or 'right_fisheye_camera'}", frame)
+                # topic 对齐 capabilities（cam.{id}：right_fisheye）——前端 sub cam.* 通配命中
+                from .. import config as _cfg
+                shot2id = {c[1]: c[0] for c in _cfg.CAMERA_LIST}
+                cid = shot2id.get(_node._active_camera, 'right_fisheye')
+                await publish_frame(f"cam.{cid}", frame)
         except Exception:
             pass
         finally:
