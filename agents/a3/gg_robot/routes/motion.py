@@ -15,6 +15,7 @@ async def motion(req: MotionRequest):
         return MotionResponse(ok=False, error="后端未初始化")
     fut = node_mod._cmd_queue.put("motion", motion_id=req.motion_id,
                                   duration_ms=req.duration_ms,
+                                  cmd_end=req.cmd_end,
                                   pause=req.pause, reset=req.reset, repeat=req.repeat)
     r = fut.result(timeout=10.0)
     return MotionResponse(ok=bool(r.get("ok")), error=r.get("error"))

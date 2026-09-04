@@ -24,6 +24,7 @@ class MotionRequest(BaseModel):
     pause: bool = Field(default=False)
     reset: bool = Field(default=False)
     repeat: bool = Field(default=False)
+    cmd_end: bool = Field(default=False, description="播完自动复位初始姿态（默认不复位）")
 
 
 class MotionResponse(BaseModel):

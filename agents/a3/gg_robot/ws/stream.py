@@ -212,7 +212,7 @@ async def camera_pusher(interval: float = 1.0):
             _busy = False
 
 
-async def cloud_pusher(interval: float = 0.5):
+async def cloud_pusher(interval: float = 1.0):
     """建图中推送实时建图数据（topic: slam.map，JSON 事件）
 
     A3 与 X2 差异：X2 从激光点云自解析二进制推 slam.cloud；A3 官方 RPC

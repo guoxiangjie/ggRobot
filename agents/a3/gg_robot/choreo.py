@@ -179,7 +179,8 @@ def _exec_step(node, step: dict) -> None:
             raise ValueError("motion 缺 motion_id（资源路径）")
         # duration 优先取步骤显式值，兜底资源清单 duration，再兜底 8s
         dur_ms = int(float(step.get("duration") or _motion_ms(mid) or 8.0) * 1000)
-        rpc.motion_command(motion_id=mid, duration_ms=dur_ms)
+        # 编排连续动作：播完不复位（cmd_end=False，文档 7.10.2——复位会插多余动作）
+        rpc.motion_command(motion_id=mid, duration_ms=dur_ms, cmd_end=False)
         if step.get("wait_done", True):
             _sleep_cancellable(node, dur_ms / 1000.0 + 0.5)
 

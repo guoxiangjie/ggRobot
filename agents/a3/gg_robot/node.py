@@ -184,10 +184,9 @@ class A3Node:
         try:
             m = BmsStateChannel()
             m.ParseFromString(_unwrap(msg))
-            # channel 消息：bms_datas 是 repeated BmsState（双电池）；取"在用"包
-            packs = list(m.bms_datas) or ([m.data] if m.HasField("data") else [])
-            cur = next((b for b in reversed(packs) if int(b.bms_state) == 1),  # 1=Connected
-                       packs[-1] if packs else None)
+            # channel 消息：bms_datas 是 repeated BmsState——文档 7.7.1：下标0=未接，下标1=在用
+            packs = list(m.bms_datas)
+            cur = packs[1] if len(packs) > 1 else (packs[0] if packs else None)
             if cur is None:
                 return
             charging = int(getattr(cur, "power_supply_status", 0)) == 1  # 1=CHARGING
@@ -258,7 +257,16 @@ class A3Node:
             if cur and cur != "MOTION":
                 logger.info(f"🏃 速度前置：{cur} → MOTION")
                 rpc.action_set("MOTION")
-                time.sleep(0.5)
+                # SetAction 是异步的（7.1.2）：轮询 GetAction 到切换完成才返回
+                # ——未完成时发速度可能被拒/触发异常
+                for _ in range(10):
+                    time.sleep(0.3)
+                    try:
+                        info2 = rpc.action_get().get("info", {})
+                        if str(info2.get("current_action", "")).endswith("MOTION"):
+                            break
+                    except Exception:  # noqa: BLE001
+                        continue
             self._mode_checked_at = time.time()
         except Exception as e:  # noqa: BLE001 —— 查询失败不阻塞遥控（mc 会自行拒绝非法输入）
             logger.warning(f"模式前置检查失败: {e}")
@@ -277,20 +285,26 @@ class A3Node:
                 self._vel_zero_since = time.time()
 
     def _publish_velocity(self) -> None:
-        """50Hz 发布（rclpy timer 回调）。静止（全零 2s）后停止发布——
-        PASSIVE 态持续灌速度话题会触发 mc 异常（实机 A3531001）"""
+        """50Hz 发布（rclpy timer 回调）。
+
+        发布语义（7.1.4 + X2 同款教训）：
+        - 激活期（_vel_publishing）持续 50Hz 发——含全零（松手=持续发零，
+          停发可能导致 mc 保持最后速度停不下来）；
+        - 全零持续 2s 后停发（静止期零流量）；PASSIVE 等非 MOTION 态绝不发
+          （持续灌速度话题触发 A3531001，实机教训）。
+        """
         from . import config as cfg
         with self._vel_lock:
             if not self._vel_publishing:
-                return   # 静止期：零发布（这是修复 H3 告警的关键）
+                return
             v = dict(self._vel)
             if time.time() - self._vel_last_cmd > 1.0:
                 v = {"forward": 0.0, "lateral": 0.0, "angular": 0.0}
                 self._vel = dict(v)
             if v["forward"] == 0 and v["lateral"] == 0 and v["angular"] == 0:
                 if self._vel_zero_since is not None and time.time() - self._vel_zero_since > 2.0:
-                    self._vel_publishing = False   # 停发（下次非零 set_velocity 再激活）
-                    return
+                    self._vel_publishing = False
+                    return   # 静止：停发（下次非零 set_velocity 再激活）
         try:
             payload = json.dumps({"data": {
                 "mode": 0,
@@ -311,17 +325,27 @@ class A3Node:
     # ── TTS 等待（trace_id 轮询，≤1Hz 遵守限频约束）──────────
 
     def wait_tts_done(self, trace_id: str, timeout: float = 30.0) -> bool:
+        """三段式等待（docs 7.2.4）：
+        ① 先见到 InQue/Playing（确认已入队开始）——刚下发时查询也是 NOTInQue（队列
+           还没登记），直接等 NOTInQue 会瞬间误判"已播完"（实机教训）；
+        ② 再等 NOTInQue（队列无此文本=播完）或 End；
+        ③ 超时按失败。"""
         from . import rpc
         deadline = time.time() + timeout
+        started = False
         while time.time() < deadline:
             time.sleep(1.0)
             try:
                 st = rpc.tts_status(trace_id).get("tts_status", {})
                 s = str(st.get("tts_status", ""))
-                if "NOTInQue" in s:
-                    return True     # 播放队列无此文本 = 已播完
                 if "Error" in s:
                     return False
+                if not started:
+                    if "InQue" in s or "Playing" in s or "Begin" in s:
+                        started = True
+                    continue
+                if "NOTInQue" in s or "End" in s or "Stop" in s:
+                    return True
             except Exception:  # noqa: BLE001 —— RPC 不可达继续等（超时兜底）
                 continue
         return False
@@ -469,6 +493,7 @@ class A3Node:
             r = rpc.motion_command(
                 motion_id=str(cmd.kwargs.get("motion_id", "")),
                 duration_ms=int(cmd.kwargs.get("duration_ms", 10000)),
+                cmd_end=bool(cmd.kwargs.get("cmd_end", False)),
                 cmd_pause=bool(cmd.kwargs.get("pause", False)),
                 cmd_reset=bool(cmd.kwargs.get("reset", False)),
                 cmd_repeat=bool(cmd.kwargs.get("repeat", False)),

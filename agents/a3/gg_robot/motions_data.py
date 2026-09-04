@@ -56,6 +56,7 @@ def _fetch_resources(rt: str, force: bool = False) -> list[dict]:
                     break
             disp = extra.get("display_name") or {}
             name = (disp.get("zh_CN") if isinstance(disp, dict) else None) or res.get("resource_name", "")
+            extra_motion = extra if rt == RT_MOTION else {}
             items.append({
                 "id": res.get("resource_path", ""),
                 "name": str(name),
@@ -63,6 +64,9 @@ def _fetch_resources(rt: str, force: bool = False) -> list[dict]:
                 "path": res.get("resource_path", ""),
                 "resource_id": res.get("resource_id"),
                 "source": res.get("source", ""),
+                # 资源能力属性（docs 7.5.2 motion_extra_info）——前端编排/执行提示用
+                "allow_walk": bool(extra_motion.get("allow_walk_and_do", False)),
+                "allow_interrupt": bool(extra_motion.get("allow_interrupt", False)),
             })
     except Exception as e:  # noqa: BLE001 —— RPC 不可达时返回旧缓存/空表，agent 不崩
         logger.warning(f"资源清单拉取失败({rt}): {e}")

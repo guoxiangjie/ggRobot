@@ -113,7 +113,7 @@ def take_shot(camera: str = "right_fisheye_camera") -> bytes:
     """单相机截图 → PNG bytes。⚠️ 单张 ~2.5MB，仅在有人看相机时调用（按需轮询）"""
     import base64
     r = call("hdu_camera", "aimdk.protocol.HalCameraService", "TakeShot",
-             {"camera_name": [camera]}, timeout=8.0)
+             {"camera_name": [camera]}, timeout=5.0)
     shots = r.get("camera_shot") or []
     if not shots:
         raise RpcError(f"no shot from {camera}", url="TakeShot")
@@ -182,10 +182,13 @@ def action_available() -> dict:
                 {}, retries=config.RPC_QUERY_RETRIES)
 
 
-def motion_command(motion_id: str = "", duration_ms: int = 10000, cmd_end: bool = True,
+def motion_command(motion_id: str = "", duration_ms: int = 10000, cmd_end: bool = False,
                    cmd_pause: bool = False, cmd_reset: bool = False,
                    cmd_repeat: bool = False) -> dict:
-    """动作播放/暂停/复位/循环（MDU）。motion_id = 资源文件绝对路径；空+cmd_reset=停止"""
+    """动作播放/暂停/复位/循环（MDU）。motion_id = 资源文件绝对路径；空+cmd_reset=停止
+
+    ⚠️ cmd_end 默认 False（docs 7.10.2：true=播完自动复位初始姿态）——连续动作/
+    编排场景复位会插入多余动作；需要复位时显式传 True（停止走 cmd_reset）。"""
     return call("mdu_motion", "aimdk.protocol.MotionCommandService", "SendMotionCommand", {
         "motion_id": motion_id, "duration_ms": int(duration_ms),
         "cmd_end": cmd_end, "cmd_pause": cmd_pause,
@@ -297,8 +300,26 @@ def mapping_realtime() -> dict:
                 retries=config.RPC_QUERY_RETRIES)
 
 
-def relocalize(mode: str = "relocalization", **kw) -> dict:
-    """重定位（examples/mm/relocalization.sh + teleop_relocation.sh 的入参形态，实机校准）"""
-    body = {"header": _header(), "command": mode}
-    body.update(kw)
-    return call("adu", "aimdk.protocol.LocalizationService", "Relocalization", body)
+# ── 重定位（RelocalizationService@50807；proto mm/relocalization.proto + examples/mm/ui 核对）──
+
+def relocalize_global(map_id: str) -> dict:
+    """全局重定位：机器人在当前地图上自主找位（docs UI 示例同款）
+    流程：SetCurrentWorkingMap(切图) → StartGlobalRelocalization"""
+    return call("adu", "aimdk.protocol.RelocalizationService", "StartGlobalRelocalization", {
+        "header": {},
+        "command": "RelocalizationCommand_GLOBAL_START",
+        "map_id": int(map_id),
+    })
+
+
+def relocalize_stop_global() -> dict:
+    return call("adu", "aimdk.protocol.RelocalizationService", "StopGlobalRelocalization", {
+        "header": {}, "command": "RelocalizationCommand_GLOBAL_CANCEL",
+    })
+
+
+def set_working_map(map_id: str) -> dict:
+    """切换当前工作地图（重定位/导航前置；examples/mm/ui set_now_map 同款）"""
+    return call("adu", "aimdk.protocol.MappingService", "SetCurrentWorkingMap", {
+        "header": {}, "map_id": int(map_id),
+    })

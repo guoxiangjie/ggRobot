@@ -101,9 +101,21 @@ async def get_map(map_id: str):
 
 @router.post("/api/slam/relocalize")
 async def relocalize(req: RelocalizeRequest):
+    """重定位（X2 兼容入口）：切工作地图 → 全局重定位（机器人自主找位）"""
     try:
-        r = rpc.relocalize("relocalization", map_id=req.map_id, x=req.x, y=req.y)
+        rpc.set_working_map(req.map_id)
+        r = rpc.relocalize_global(req.map_id)
         return {"ok": True, "raw": r}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)}
+
+
+@router.post("/api/slam/map/current")
+async def set_current_map(req: RelocalizeRequest):
+    """仅切换当前工作地图（不触发重定位）"""
+    try:
+        rpc.set_working_map(req.map_id)
+        return {"ok": True}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)}
 
