@@ -7,9 +7,11 @@ a3:
 
 velocity:
   publish_rate: 50        # Hz（官方 walk.py 同款）
-  max_forward: 1.0        # m/s → 比例换算上限（日常行走建议 <1.2）
-  max_lateral: 0.6
-  max_angular: 1.0        # rad/s
+  # 比例 1.0 ≈ mc 内部上限（非 1 m/s！按规格书日常上限标定；实机可标定修正：
+  # POST /api/velocity?raw=1 发已知比例实测速度 → 真实max = 比例分之速度
+  max_forward: 1.8        # m/s ↔ 比例 1.0（日常行走最大）
+  max_lateral: 1.2
+  max_angular: 2.0        # rad/s ↔ 比例 1.0
 
 rpc:
   timeout: 3.0

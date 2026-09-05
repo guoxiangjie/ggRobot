@@ -103,10 +103,18 @@ class A3Node:
         self._create_sensor_subs(qos)
         self._create_velocity_publisher(qos)
 
-        # ── 相机（TakeShot 按需模式：raw 话题订阅已禁——265MB/s 触发 A3531001，实机教训）──
+        # ── 相机：三模式（robot.yaml camera.mode）
+        #   shot  = TakeShot 截图轮询（实机曾触发相机告警，降级备选）
+        #   h265  = /stream 话题透传（官方标准视频流 ~几Mbps；前端 WebCodecs 解码，首选）
+        #   off   = 禁用（raw rgb 订阅永久禁止——265MB/s 触发 A3531001）
+        from . import config as _cfg0
+        self._camera_mode = str(getattr(_cfg0, "CAMERA_MODE", "shot"))
         self._active_camera: str | None = None
         self._camera_frame_count = 0
+        self._h265_frame: tuple[bytes, float] | None = None   # (data, ts)
         self._auto_select_camera()
+        if self._camera_mode == "h265":
+            self._create_h265_sub(qos)
         self.slam_mapping = False
 
         # ── 麦克风 VAD 段采集（/agent/process_audio_output，only_voice 模式）──
@@ -129,6 +137,7 @@ class A3Node:
         self._vel_publishing = False   # 仅运动期间发布；全零 2s 后停发
         self._vel_zero_since: float | None = None
         self._mode_checked_at = 0.0    # MOTION 前置检查缓存（10s）
+        self._raw_ratio = False       # 标定模式：数值直接作比例
 
         logger.info("🤖 A3Node 就绪（传感器订阅 + 速度发布）")
 
@@ -301,16 +310,22 @@ class A3Node:
             if time.time() - self._vel_last_cmd > 1.0:
                 v = {"forward": 0.0, "lateral": 0.0, "angular": 0.0}
                 self._vel = dict(v)
+                self._raw_ratio = False
             if v["forward"] == 0 and v["lateral"] == 0 and v["angular"] == 0:
                 if self._vel_zero_since is not None and time.time() - self._vel_zero_since > 2.0:
                     self._vel_publishing = False
                     return   # 静止：停发（下次非零 set_velocity 再激活）
         try:
+            # mode=0：官方 walk.py 同款（proto DEFAULT=10，实机 0 已验证可走；标定后统一）
+            if getattr(self, "_raw_ratio", False):
+                fv, lv, av = _clamp(v["forward"]), _clamp(v["lateral"]), _clamp(v["angular"])
+            else:
+                fv = _clamp(v["forward"] / cfg.VEL_MAX_FORWARD)
+                lv = _clamp(v["lateral"] / cfg.VEL_MAX_LATERAL)
+                av = _clamp(v["angular"] / cfg.VEL_MAX_ANGULAR)
             payload = json.dumps({"data": {
-                "mode": 0,
-                "forward_velocity": _clamp(v["forward"] / cfg.VEL_MAX_FORWARD),
-                "lateral_velocity": _clamp(v["lateral"] / cfg.VEL_MAX_LATERAL),
-                "angular_velocity": _clamp(v["angular"] / cfg.VEL_MAX_ANGULAR),
+                "mode": 0, "forward_velocity": fv,
+                "lateral_velocity": lv, "angular_velocity": av,
             }}).encode()
             msg = self._vel_pub.msg_type()
             msg.serialization_type = "json"
@@ -372,6 +387,34 @@ class A3Node:
             return {"ok": False, "error": f"unknown camera {camera_id}"}
         self._active_camera = valid[camera_id]
         return {"ok": True, "active": self._active_camera}
+
+    def _create_h265_sub(self, qos) -> None:
+        """订阅当前相机的 /stream（foxglove CompressedVideo，H265 ~几Mbps）→ 透传缓存"""
+        from ros2_plugin_proto.msg import RosMsgWrapper
+        topic = "/hal/head_left_fisheye_camera/stream"
+        # stream 话题名规律 /hal/<cam>/stream；shot 名→话题名映射（实机核对清单项）
+        shot = self._active_camera or "left_fisheye_camera"
+        topic = f"/hal/{shot}/stream" if not topic.endswith(shot) else topic
+        self._h265_sub = self.node.create_subscription(RosMsgWrapper, topic, self._on_h265, qos)
+        logger.info(f"🎥 H265 流订阅: {topic}")
+
+    def _on_h265(self, msg) -> None:
+        """CompressedVideo（RosMsgWrapper json 封装）：{format, data(base64?)}——实机核对数据形态"""
+        try:
+            raw = _unwrap(msg)
+            import json as _json
+            d = _json.loads(raw)
+            data = d.get("data", "")
+            import base64 as _b64
+            if isinstance(data, str) and data:
+                frame = _b64.b64decode(data)
+                self._h265_frame = (frame, time.time())
+                self._camera_frame_count += 1
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"H265 帧解析失败: {e}")
+
+    def get_h265_frame(self) -> tuple[bytes, float] | None:
+        return self._h265_frame
 
     def shot_jpeg(self) -> bytes | None:
         """TakeShot → PNG → 缩放 JPEG（stream.camera_pusher 经 to_thread 调用）"""
@@ -472,6 +515,22 @@ class A3Node:
             f, l, a = (float(cmd.kwargs.get("forward", 0)),
                        float(cmd.kwargs.get("lateral", 0)),
                        float(cmd.kwargs.get("angular", 0)))
+            if cmd.kwargs.get("raw"):
+                # 标定模式：数值直接作比例（绕过 m/s 换算），走 topic 原值
+                with self._vel_lock:
+                    self._vel = {"forward": f, "lateral": l, "angular": a}
+                    self._vel_last_cmd = time.time()
+                    if f or l or a:
+                        self._vel_publishing = True
+                        self._vel_zero_since = None
+                        self._raw_ratio = True
+                    else:
+                        self._raw_ratio = None if not (f or l or a) else self._raw_ratio
+                        if self._vel_zero_since is None:
+                            self._vel_zero_since = time.time()
+                if (f or l or a) and not self._vel_publishing:
+                    self._ensure_motion_mode()
+                return {"ok": True}
             if (f or l or a) and not self._vel_publishing:
                 self._ensure_motion_mode()   # 速度话题仅 MOTION 可调（文档 7.1.4）
             self.set_velocity(f, l, a)

@@ -36,6 +36,7 @@ class VelocityRequest(BaseModel):
     forward: float = Field(default=0.0, ge=-1.5, le=1.5)   # m/s（agent 内换算比例）
     lateral: float = Field(default=0.0, ge=-1.5, le=1.5)
     angular: float = Field(default=0.0, ge=-2.0, le=2.0)   # rad/s
+    raw: bool = Field(default=False, description="标定用：数值直接作比例发送（绕过 m/s 换算）")
 
 
 class VelocityResponse(BaseModel):

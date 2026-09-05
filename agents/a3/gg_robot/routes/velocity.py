@@ -13,6 +13,7 @@ async def velocity(req: VelocityRequest):
     if node_mod._cmd_queue is None:
         return VelocityResponse(ok=False)
     fut = node_mod._cmd_queue.put("velocity",
-                                  forward=req.forward, lateral=req.lateral, angular=req.angular)
+                                  forward=req.forward, lateral=req.lateral, angular=req.angular,
+                                  raw=req.raw)
     fut.result(timeout=2.0)
     return VelocityResponse(ok=True)

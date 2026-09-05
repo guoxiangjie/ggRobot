@@ -76,11 +76,15 @@ MDU_HOST = str(_get("a3.mdu_host", "10.42.10.12"))   # 运控 / 动作命令 / �
 ADU_HOST = str(_get("a3.adu_host", "10.42.10.11"))   # 地图 / 导航
 
 # ── 速度控制（A3 为比例制 -1.0~1.0；平台 API 统一 m/s，agent 内换算）──
+# ⚠️ 标定语义（proto motion_control/locomotion.proto）：比例由 mc 内部换算真实速度，
+# 比例 1.0 ≈ mc 内部上限（非 1 m/s！）。默认按规格书日常上限标定：
+#   前进 1.8 m/s（日常行走最大）/ 平移 1.2 / 转向 2.0 rad/s
+# 实机如速度手感偏差：用 POST /api/velocity?raw=1 发已知比例实测，按
+# 真实速度=比例×max 反算后改 robot.yaml。
 VEL_PUBLISH_RATE = int(_get("velocity.publish_rate", 50))
-VEL_MAX_FORWARD = float(_get("velocity.max_forward", 1.0))    # m/s，映射 forward 比例 = v / max
-VEL_MAX_LATERAL = float(_get("velocity.max_lateral", 0.6))
-VEL_MAX_ANGULAR = float(_get("velocity.max_angular", 1.0))    # rad/s
-# A3 日常行走建议 <1.2 m/s（官方规格），默认上限 1.0 保守
+VEL_MAX_FORWARD = float(_get("velocity.max_forward", 1.8))    # m/s ↔ 比例 1.0
+VEL_MAX_LATERAL = float(_get("velocity.max_lateral", 1.2))
+VEL_MAX_ANGULAR = float(_get("velocity.max_angular", 2.0))    # rad/s ↔ 比例 1.0
 
 # ── RPC 超时/重试 ──
 RPC_TIMEOUT = float(_get("rpc.timeout", 3.0))
@@ -90,7 +94,7 @@ RPC_CTRL_RETRIES = int(_get("rpc.ctrl_retries", 0))     # 控制类（非幂等�
 # ── 相机 ──
 # ⛔ 实机教训：raw Image 话题订阅（≈265MB/s DDS 流）会触发内部通信告警 A3531001，
 #    topic 模式永久禁用。正解 = TakeShot RPC 按需轮询（仅前端开相机页才拉，PNG→JPEG 转码推 WS）。
-CAMERA_MODE = str(_get("camera.mode", "shot"))     # shot=TakeShot 轮询（唯一推荐）
+CAMERA_MODE = str(_get("camera.mode", "shot"))     # shot=截图轮询 / h265=流透传（首选，待实机验证）
 CAMERA_FPS = float(_get("camera.fps", 1))          # 截图轮询帧率（1fps 足够 UI；限频友好）
 CAMERA_JPEG_QUALITY = int(_get("camera.jpeg_quality", 60))
 CAMERA_MAX_WIDTH = int(_get("camera.max_width", 800))

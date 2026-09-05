@@ -186,6 +186,7 @@ async def camera_pusher(interval: float = 1.0):
     PNG→JPEG 转码后按订阅推送二进制帧（4B 时间戳 + JPEG）。
     """
     _busy = False
+    _last_h265_ts = 0.0
     while True:
         await asyncio.sleep(interval)
         if _busy:
@@ -199,6 +200,15 @@ async def camera_pusher(interval: float = 1.0):
             continue
         _busy = True
         try:
+            mode = getattr(_node, "_camera_mode", "shot")
+            if mode == "h265":
+                # H265 流透传：新帧（ts 变化）才推，topic cam.h265（前端 WebCodecs 解码）
+                got = _node.get_h265_frame()
+                if got and got[1] != _last_h265_ts:
+                    frame, _last_h265_ts_local = got
+                    _last_h265_ts = got[1]
+                    await publish_frame("cam.h265", frame)
+                return
             frame = await asyncio.to_thread(_node.shot_jpeg)
             if frame:
                 # topic 对齐 capabilities（cam.{id}：right_fisheye）——前端 sub cam.* 通配命中

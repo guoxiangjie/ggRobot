@@ -65,3 +65,23 @@
 - 表情播放（face/play 默认 iceoryx，需改 skillpilot.yaml——改机上配置有风险，实机评估）
 - 平台装机向导/批量更新 A3 通道（tar 分发，替代 deb）
 - 建图工作台 A3 数据源适配（slam.map JSON vs X2 slam.cloud 二进制——前端 MappingStudio 要加分支）
+
+---
+
+## 第二轮验证清单（2026-09-05，新增高优先项）
+
+### P0 相机 H265 流核对（数据形态是猜的，第一件事验）
+- [ ] `ros2 topic echo /hal/head_left_fisheye_camera/stream --once`——确认 CompressedVideo 在 RosMsgWrapper 里的封装格式（json？pb？data 是否 base64）与字段名
+- [ ] `ros2 topic hz /hal/head_left_fisheye_camera/stream`（确认 10FPS 数据在流）
+- [ ] 若形态不符改 node._on_h265 解析
+- [ ] 单次手动 TakeShot（不轮询）后观察 10 分钟——确认 A3512001/A3531001 是否由截图引发（双归因验证）
+
+### P0 速度标定（当前 max 值是规格书推算）
+- [ ] 切 MOTION → `POST /api/velocity {"forward":0.2,"raw":true}` 发 5 秒停——实测步速（秒表/卷尺）×3 档（0.1/0.3/0.5 比例）
+- [ ] 真实 max = 比例 ÷ 实测速度 → 更新 robot.yaml velocity.max_forward
+- [ ] lateral/angular 同法（原地转一圈计时标 angular）
+
+### P1 昨日修复回归
+- [ ] 编排：两个连续动作（验证 cmd_end=false 不再插复位动作）
+- [ ] TTS 等播完：播 10 字文本实测等待时长 ≈ 3-4s（不再瞬间返回）
+- [ ] 松手停止：行走中松手 → 2s 内完全停稳（持续零速生效）
